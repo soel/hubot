@@ -13,6 +13,7 @@ Response = require './response'
 HUBOT_DEFAULT_ADAPTERS = [
   'campfire'
   'shell'
+  'direct'
 ]
 
 HUBOT_DOCUMENTATION_SECTIONS = [
