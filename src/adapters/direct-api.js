@@ -1,4 +1,5 @@
 (function ($hx_exports) { "use strict";
+$hx_exports.albero = $hx_exports.albero || {};
 var $hxClasses = {},$estr = function() { return js.Boot.__string_rec(this,''); };
 function $extend(from, fields) {
 	function Inherit() {} Inherit.prototype = from; var proto = new Inherit();
@@ -422,7 +423,7 @@ albero.AppFacade.__super__ = puremvc.patterns.facade.Facade;
 albero.AppFacade.prototype = $extend(puremvc.patterns.facade.Facade.prototype,{
 	initializeModel: function() {
 		puremvc.patterns.facade.Facade.prototype.initializeModel.call(this);
-		var proxies = [new albero.proxy.DataStoreProxy(),new albero.proxy.SettingsProxy(),new albero.proxy.MsgPackRpcProxy(),new albero.proxy.AlberoBroadcastProxy(),new albero.proxy.AlberoServiceProxy(),new albero.proxy.FileServiceProxy(),new albero.proxy.FormatterProxy(),new albero.proxy.RoutingProxy()];
+		var proxies = [new albero.proxy.AppStateProxy(),new albero.proxy.DataStoreProxy(),new albero.proxy.SettingsProxy(),new albero.proxy.MsgPackRpcProxy(),new albero.proxy.AlberoBroadcastProxy(),new albero.proxy.AlberoServiceProxy(),new albero.proxy.FileServiceProxy(),new albero.proxy.FormatterProxy(),new albero.proxy.RoutingProxy()];
 		proxies.push(albero.proxy.AccountLoaderProxyFactory.newInstance());
 		var _g = 0;
 		while(_g < proxies.length) {
@@ -483,6 +484,13 @@ albero.AppFacade.prototype = $extend(puremvc.patterns.facade.Facade.prototype,{
 	}
 	,__class__: albero.AppFacade
 });
+albero.AppStates = { __ename__ : true, __constructs__ : ["active","inactive"] };
+albero.AppStates.active = ["active",0];
+albero.AppStates.active.toString = $estr;
+albero.AppStates.active.__enum__ = albero.AppStates;
+albero.AppStates.inactive = ["inactive",1];
+albero.AppStates.inactive.toString = $estr;
+albero.AppStates.inactive.__enum__ = albero.AppStates;
 albero.Int64Helper = function() { };
 $hxClasses["albero.Int64Helper"] = albero.Int64Helper;
 albero.Int64Helper.__name__ = ["albero","Int64Helper"];
@@ -736,21 +744,20 @@ albero.command.ReadCommand.prototype = $extend(albero.command.AutoBindCommand.pr
 		switch(type[1]) {
 		case 0:
 			var msgId = type[3];
-			var talk = type[2];
-			if(talk != null) this.api.updateReadStatuses(talk.id,msgId);
+			var talkId = type[2];
+			this.api.updateReadStatuses(talkId,msgId);
 			break;
 		case 1:
-			this.api.updateAnnouncementReadStatus();
+			var domainId = type[2];
+			this.api.updateAnnouncementReadStatus(domainId);
 			break;
 		}
 	}
 	,__class__: albero.command.ReadCommand
 });
 albero.command.ReadType = { __ename__ : true, __constructs__ : ["TALK","ANNOUNCEMENT"] };
-albero.command.ReadType.TALK = function(talk,msgId) { var $x = ["TALK",0,talk,msgId]; $x.__enum__ = albero.command.ReadType; $x.toString = $estr; return $x; };
-albero.command.ReadType.ANNOUNCEMENT = ["ANNOUNCEMENT",1];
-albero.command.ReadType.ANNOUNCEMENT.toString = $estr;
-albero.command.ReadType.ANNOUNCEMENT.__enum__ = albero.command.ReadType;
+albero.command.ReadType.TALK = function(talkId,msgId) { var $x = ["TALK",0,talkId,msgId]; $x.__enum__ = albero.command.ReadType; $x.toString = $estr; return $x; };
+albero.command.ReadType.ANNOUNCEMENT = function(domainId) { var $x = ["ANNOUNCEMENT",1,domainId]; $x.__enum__ = albero.command.ReadType; $x.toString = $estr; return $x; };
 albero.command.ReloadDataCommand = function() {
 	albero.command.AutoBindCommand.call(this);
 };
@@ -1075,6 +1082,7 @@ albero.entity.FileInfo = function(props) {
 	this.contentType = props.content_type;
 	this.contentSize = props.content_size;
 	this.url = props.url;
+	this.thumbUrl = props.thumbnail_url;
 	this.updatedAt = props.updated_at;
 };
 $hxClasses["albero.entity.FileInfo"] = albero.entity.FileInfo;
@@ -1685,6 +1693,8 @@ albero.proxy.AlberoBroadcastProxy.prototype = $extend(puremvc.patterns.proxy.Pro
 });
 albero.proxy.AlberoServiceProxy = function() {
 	puremvc.patterns.proxy.Proxy.call(this,"api");
+	this.updateReadStatusesTimers = new haxe.ds.StringMap();
+	this.updateReadAnnouncementStatusesTimers = new haxe.ds.StringMap();
 };
 $hxClasses["albero.proxy.AlberoServiceProxy"] = albero.proxy.AlberoServiceProxy;
 albero.proxy.AlberoServiceProxy.__name__ = ["albero","proxy","AlberoServiceProxy"];
@@ -2092,9 +2102,16 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 		status.unreadCount = 0;
 		status.maxReadMessageId = maxMsgId;
 		this.dataStore.setTalkStatus(status);
-		this.rpc.call("update_read_statuses",[talkId,maxMsgId],function(_) {
-			_g.sendNotification("notify_update_talk_status",status);
-		});
+		this.sendNotification("notify_update_talk_status",status);
+		var talkIdStr = "_" + talkId.high + "_" + talkId.low;
+		var timer = this.updateReadStatusesTimers.get(talkIdStr);
+		if(timer != null) timer.stop();
+		timer = haxe.Timer.delay(function() {
+			_g.updateReadStatusesTimers.remove(talkIdStr);
+			_g.rpc.call("update_read_statuses",[talkId,maxMsgId],function(_) {
+			});
+		},1000);
+		this.updateReadStatusesTimers.set(talkIdStr,timer);
 	}
 	,upload: function(talkId,file) {
 		var _g = this;
@@ -2174,17 +2191,23 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 			if(callback != null) callback();
 		});
 	}
-	,updateAnnouncementReadStatus: function() {
+	,updateAnnouncementReadStatus: function(domainId) {
 		var _g = this;
-		var domainId = this.settings.getSelectedDomainId();
 		var status = this.dataStore.getAnnouncementStatus(domainId);
 		if(status == null || status.unreadCount == 0) return;
-		this.rpc.call("update_announcement_status",[domainId,status.maxAnnouncementId],function(_) {
-			status.unreadCount = 0;
-			status.maxReadAnnouncementId = status.maxAnnouncementId;
-			_g.dataStore.setAnnouncementStatus(status);
-			_g.sendNotification("notify_update_announcement_status",status);
-		});
+		status.unreadCount = 0;
+		status.maxReadAnnouncementId = status.maxAnnouncementId;
+		this.dataStore.setAnnouncementStatus(status);
+		this.sendNotification("notify_update_announcement_status",status);
+		var domainIdStr = "_" + domainId.high + "_" + domainId.low;
+		var timer = this.updateReadAnnouncementStatusesTimers.get(domainIdStr);
+		if(timer != null) timer.stop();
+		timer = haxe.Timer.delay(function() {
+			_g.updateReadAnnouncementStatusesTimers.remove(domainIdStr);
+			_g.rpc.call("update_announcement_status",[domainId,status.maxAnnouncementId],function(_) {
+			});
+		},1000);
+		this.updateReadAnnouncementStatusesTimers.set(domainIdStr,timer);
 	}
 	,getQuestions: function(talk,type,range) {
 		var _g1 = this;
@@ -2273,6 +2296,48 @@ albero.proxy._AlberoServiceProxy.UploadUseType.MESSAGE.__enum__ = albero.proxy._
 albero.proxy._AlberoServiceProxy.UploadUseType.TALK_ICON = ["TALK_ICON",2];
 albero.proxy._AlberoServiceProxy.UploadUseType.TALK_ICON.toString = $estr;
 albero.proxy._AlberoServiceProxy.UploadUseType.TALK_ICON.__enum__ = albero.proxy._AlberoServiceProxy.UploadUseType;
+albero.proxy.AppStateProxy = function() {
+	puremvc.patterns.proxy.Proxy.call(this,"appState");
+};
+$hxClasses["albero.proxy.AppStateProxy"] = albero.proxy.AppStateProxy;
+albero.proxy.AppStateProxy.__name__ = ["albero","proxy","AppStateProxy"];
+albero.proxy.AppStateProxy.__super__ = puremvc.patterns.proxy.Proxy;
+albero.proxy.AppStateProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.prototype,{
+	onRegister: function() {
+		this.start();
+	}
+	,start: function() {
+		this.updateLastActivityAt();
+		if(window.document.hasFocus()) this.setAppState(albero.AppStates.active); else this.setAppState(albero.AppStates.inactive);
+		this.setupListeners();
+		this.checkInactiveInterval();
+	}
+	,setupListeners: function() {
+	}
+	,setAppState: function(_appState) {
+		var p1 = "APP_STATE_CHANGED: " + Std.string(_appState);
+		if(AlberoLog.DEBUG && console != null) console.log(p1,"","","","");
+		this.appState = _appState;
+		this.sendNotification("app_state_changed",this.appState);
+	}
+	,updateLastActivityAt: function() {
+		this.lastActivityAt = new Date();
+	}
+	,checkInactiveInterval: function() {
+		var _g = this;
+		this.checkInactive();
+		haxe.Timer.delay(function() {
+			_g.checkInactiveInterval();
+		},500);
+	}
+	,checkInactive: function() {
+		if(this.appState == albero.AppStates.inactive) return;
+		var d = new Date().getTime() - this.lastActivityAt.getTime();
+		if(d < 2000) return;
+		this.setAppState(albero.AppStates.inactive);
+	}
+	,__class__: albero.proxy.AppStateProxy
+});
 albero.proxy.DataStoreProxy = function() {
 	puremvc.patterns.proxy.Proxy.call(this,"dataStore");
 	this.clear();
@@ -2456,6 +2521,7 @@ albero.proxy.FileServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.p
 });
 albero.proxy.FormatterProxy = function() {
 	puremvc.patterns.proxy.Proxy.call(this,"formatter");
+	albero.proxy._FormatterProxy.ExternalUserIconListener.formatterProxy = this;
 };
 $hxClasses["albero.proxy.FormatterProxy"] = albero.proxy.FormatterProxy;
 albero.proxy.FormatterProxy.__name__ = ["albero","proxy","FormatterProxy"];
@@ -2463,6 +2529,10 @@ albero.proxy.FormatterProxy.__super__ = puremvc.patterns.proxy.Proxy;
 albero.proxy.FormatterProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.prototype,{
 	__class__: albero.proxy.FormatterProxy
 });
+albero.proxy._FormatterProxy = {};
+albero.proxy._FormatterProxy.ExternalUserIconListener = $hx_exports.albero.ExternalUserIconListener = function() { };
+$hxClasses["albero.proxy._FormatterProxy.ExternalUserIconListener"] = albero.proxy._FormatterProxy.ExternalUserIconListener;
+albero.proxy._FormatterProxy.ExternalUserIconListener.__name__ = ["albero","proxy","_FormatterProxy","ExternalUserIconListener"];
 albero.proxy.MsgPackRpcProxy = function() {
 	puremvc.patterns.proxy.Proxy.call(this,"rpc");
 	this.responseHandlers = new haxe.ds.IntMap();
@@ -2783,19 +2853,14 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 			break;
 		case "notify_add_domain_invite":
 			var invite = note.getBody();
-			var api;
-			api = js.Boot.__cast(this.facade.retrieveProxy("api") , albero.proxy.AlberoServiceProxy);
-			api.acceptDomainInvite(invite.id);
 			break;
 		case "notify_create_message":
 			var msg = note.getBody();
 			if(this.dataStore.isCurrentUser(msg.userId)) return;
 			var status = this.dataStore.getTalkStatus(msg.talkId);
 			if(status != null && status.maxReadMessageId != null && haxe.Int64.compare(status.maxReadMessageId,msg.id) >= 0) return;
-			var talk = this.dataStore.getTalk(msg.talkId);
-			if(talk == null) return;
 			haxe.Timer.delay(function() {
-				_g1.sendNotification("Read",albero.command.ReadType.TALK(talk,msg.id));
+				_g1.sendNotification("Read",albero.command.ReadType.TALK(msg.talkId,msg.id));
 				_g1.dispatch(msg);
 			},500);
 			break;
@@ -4077,6 +4142,8 @@ String.prototype.__class__ = $hxClasses.String = String;
 String.__name__ = ["String"];
 $hxClasses.Array = Array;
 Array.__name__ = ["Array"];
+Date.prototype.__class__ = $hxClasses.Date = Date;
+Date.__name__ = ["Date"];
 var Int = $hxClasses.Int = { __name__ : ["Int"]};
 var Dynamic = $hxClasses.Dynamic = { __name__ : ["Dynamic"]};
 var Float = $hxClasses.Float = Number;
@@ -4130,6 +4197,7 @@ albero.proxy.AlberoBroadcastProxy.__meta__ = { fields : { dataStore : { inject :
 albero.proxy.AlberoBroadcastProxy.NAME = "broadcast";
 albero.proxy.AlberoServiceProxy.__meta__ = { fields : { rpc : { inject : null}, settings : { inject : null}, dataStore : { inject : null}, fileService : { inject : null}}};
 albero.proxy.AlberoServiceProxy.NAME = "api";
+albero.proxy.AppStateProxy.NAME = "appState";
 albero.proxy.DataStoreProxy.NAME = "dataStore";
 albero.proxy.FileServiceProxy.NAME = "fileService";
 albero.proxy.FormatterProxy.NAME = "formatter";
@@ -4148,4 +4216,4 @@ sys.io.File.UTF8_ENCODING = { encoding : "utf8"};
 DirectAPI.main();
 })(typeof window != "undefined" ? window : exports);
 
-//# sourceMappingURL=app.js.map
+//# sourceMappingURL=direct-api.js.map
