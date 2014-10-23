@@ -38,7 +38,9 @@ class Direct extends Adapter
 
    withAuthor = (callback) ->
      (talk, user, msg) ->
-       envelope = self.robot.brain.userForId(user.id, user)
+       envelope = self.robot.brain.userForId(user.id)
+       envelope.name = user.name
+       envelope.email = user.email
        envelope.room = talk.id
        envelope.rooms ?= {}
        envelope.rooms[talk.id] =
