@@ -1,3 +1,18 @@
+v2.9.1
+======
+
+* Improve instructions for using new yeoman generator when calling `hubot --create`
+
+v2.9.0
+======
+
+* Deprecate `hubot --create` in favor of new yeoman generator
+
+v2.8.3
+======
+
+* Fix error when trying to find userForName, when name is incorrectly set as an integer
+
 v2.8.2
 ======
 
