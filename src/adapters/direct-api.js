@@ -25,6 +25,7 @@ DirectAPI.prototype = {
 			Settings.host = options.host;
 			Settings.endpoint = options.endpoint;
 			Settings.$name = options.name;
+			Settings.accessToken = options.access_token;
 		} else throw new Error("Not enough parameters provided. I need a access token");
 	}
 	,send: function(envelope,text) {
@@ -250,12 +251,6 @@ StringTools.endsWith = function(s,end) {
 };
 StringTools.replace = function(s,sub,by) {
 	return s.split(sub).join(by);
-};
-var Sys = function() { };
-$hxClasses["Sys"] = Sys;
-Sys.__name__ = ["Sys"];
-Sys.exit = function(code) {
-	js.Node.process.exit(code);
 };
 var ValueType = { __ename__ : true, __constructs__ : ["TNull","TInt","TFloat","TBool","TObject","TFunction","TClass","TEnum","TUnknown"] };
 ValueType.TNull = ["TNull",0];
@@ -517,6 +512,19 @@ albero.Int64Helper.idStrToInt64 = function(str) {
 	var vals = str.split("_");
 	if(vals.length > 2) return haxe.Int64.make(Std.parseInt(vals[1]),Std.parseInt(vals[2])); else return null;
 };
+albero.Int64Helper.remove = function(array,x) {
+	if(array == null) return false;
+	var _g = 0;
+	while(_g < array.length) {
+		var item = array[_g];
+		++_g;
+		if(item != null && x != null && item.high == x.high && item.low == x.low) {
+			HxOverrides.remove(array,item);
+			return true;
+		}
+	}
+	return false;
+};
 albero.Urls = { __ename__ : true, __constructs__ : ["auto","domains","domain","members","talks","actions","console","settings","announcements","error","loading"] };
 albero.Urls.auto = ["auto",0];
 albero.Urls.auto.toString = $estr;
@@ -751,13 +759,19 @@ albero.command.ReadCommand.prototype = $extend(albero.command.AutoBindCommand.pr
 			var domainId = type[2];
 			this.api.updateAnnouncementReadStatus(domainId);
 			break;
+		case 2:
+			var messageId = type[3];
+			var talkId1 = type[2];
+			this.api.getReadStatus(talkId1,messageId);
+			break;
 		}
 	}
 	,__class__: albero.command.ReadCommand
 });
-albero.command.ReadType = { __ename__ : true, __constructs__ : ["TALK","ANNOUNCEMENT"] };
+albero.command.ReadType = { __ename__ : true, __constructs__ : ["TALK","ANNOUNCEMENT","READ_STATUS"] };
 albero.command.ReadType.TALK = function(talkId,msgId) { var $x = ["TALK",0,talkId,msgId]; $x.__enum__ = albero.command.ReadType; $x.toString = $estr; return $x; };
 albero.command.ReadType.ANNOUNCEMENT = function(domainId) { var $x = ["ANNOUNCEMENT",1,domainId]; $x.__enum__ = albero.command.ReadType; $x.toString = $estr; return $x; };
+albero.command.ReadType.READ_STATUS = function(talkId,messageId) { var $x = ["READ_STATUS",2,talkId,messageId]; $x.__enum__ = albero.command.ReadType; $x.toString = $estr; return $x; };
 albero.command.ReloadDataCommand = function() {
 	albero.command.AutoBindCommand.call(this);
 };
@@ -1197,6 +1211,18 @@ albero.entity.MessageType.phoneReceive.__enum__ = albero.entity.MessageType;
 albero.entity.MessageType.unknown = ["unknown",13];
 albero.entity.MessageType.unknown.toString = $estr;
 albero.entity.MessageType.unknown.__enum__ = albero.entity.MessageType;
+albero.entity.MessageReadStatus = function(props) {
+	if(props == null) return;
+	this.id = props.message_id;
+	this.talkId = props.talk_id;
+	this.readUserIds = props.read_user_ids;
+	this.unreadUserIds = props.unread_user_ids;
+};
+$hxClasses["albero.entity.MessageReadStatus"] = albero.entity.MessageReadStatus;
+albero.entity.MessageReadStatus.__name__ = ["albero","entity","MessageReadStatus"];
+albero.entity.MessageReadStatus.prototype = {
+	__class__: albero.entity.MessageReadStatus
+};
 albero.entity.MessageReadStatusesUpdate = function(props) {
 	if(props == null) return;
 	this.talkId = props.talk_id;
@@ -1339,11 +1365,22 @@ albero.entity.TalkStatus = function(props) {
 	this.maxMessageId = props.max_message_id;
 	this.maxMessageCreatedAt = props.max_message_created_at;
 	this.maxReadMessageId = props.max_read_message_id;
+	this.maxEveryoneReadMessageId = props.max_everyone_read_message_id;
 };
 $hxClasses["albero.entity.TalkStatus"] = albero.entity.TalkStatus;
 albero.entity.TalkStatus.__name__ = ["albero","entity","TalkStatus"];
 albero.entity.TalkStatus.prototype = {
 	__class__: albero.entity.TalkStatus
+};
+albero.entity.TalkStatusUpdate = function(props) {
+	if(props == null) return;
+	this.talkId = props.talk_id;
+	this.maxEveryoneReadMessageId = props.max_everyone_read_message_id;
+};
+$hxClasses["albero.entity.TalkStatusUpdate"] = albero.entity.TalkStatusUpdate;
+albero.entity.TalkStatusUpdate.__name__ = ["albero","entity","TalkStatusUpdate"];
+albero.entity.TalkStatusUpdate.prototype = {
+	__class__: albero.entity.TalkStatusUpdate
 };
 albero.entity.User = function(props) {
 	if(props == null) return;
@@ -1559,14 +1596,35 @@ albero.proxy.AlberoBroadcastProxy.prototype = $extend(puremvc.patterns.proxy.Pro
 			default:
 			}
 			var talkStatus = this.newTalkStatusByMessage(msg);
-			if(talkStatus != null) this.sendNotification("notify_update_talk_status",talkStatus);
+			if(talkStatus != null) this.sendNotification("notify_update_local_talk_status",talkStatus);
 			break;
 		case "notify_update_read_statuses":
 			var status = obj;
-			var talkStatus1 = this.newTalkStatusByMessageStatus(status);
-			if(talkStatus1 != null) this.sendNotification("notify_update_talk_status",talkStatus1);
+			var talkStatus1 = this.updateTalkStatus(status);
+			if(talkStatus1 != null) this.sendNotification("notify_update_local_talk_status",talkStatus1);
+			break;
+		case "notify_update_announcement_status":
+			var status1 = obj;
+			var currentStatus = this.dataStore.getAnnouncementStatus(status1.domainId);
+			if(currentStatus == null) this.dataStore.setAnnouncementStatus(status1); else if(currentStatus.maxReadAnnouncementId == null || haxe.Int64.compare(currentStatus.maxReadAnnouncementId,status1.maxReadAnnouncementId) < 0) this.dataStore.setAnnouncementStatus(status1); else {
+				if(AlberoLog.DEBUG && console != null) console.log("notified announcement status is older than current status. notified:%o, current:%o",status1,currentStatus,"","");
+				status1.maxReadAnnouncementId = currentStatus.maxReadAnnouncementId;
+				status1.maxAnnouncementId = currentStatus.maxAnnouncementId;
+				status1.unreadCount = currentStatus.unreadCount;
+			}
+			break;
+		case "notify_update_talk_status":
+			var statusUpdate = obj;
+			var status2 = this.dataStore.getTalkStatus(statusUpdate.talkId);
+			if(status2 != null && haxe.Int64.compare(status2.maxEveryoneReadMessageId,statusUpdate.maxEveryoneReadMessageId) < 0) {
+				status2.maxEveryoneReadMessageId = statusUpdate.maxEveryoneReadMessageId;
+				this.dataStore.setTalkStatus(status2);
+				this.sendNotification("notify_update_local_talk_status",status2);
+			}
 			break;
 		case "notify_delete_talk":
+			this.dataStore.removeTalk(obj);
+			this.dataStore.removeTalkStatus(obj);
 			this.sendNotification("SelectTalk",null);
 			break;
 		case "notify_create_announcement":
@@ -1606,6 +1664,9 @@ albero.proxy.AlberoBroadcastProxy.prototype = $extend(puremvc.patterns.proxy.Pro
 		case "notify_update_read_statuses":
 			obj = this.newMessageReadStatusesUpdate(obj);
 			break;
+		case "notify_update_talk_status":
+			obj = this.newTalkStatusUpdate(obj);
+			break;
 		case "notify_create_announcement":
 			obj = new albero.entity.Announcement(obj);
 			break;
@@ -1643,7 +1704,7 @@ albero.proxy.AlberoBroadcastProxy.prototype = $extend(puremvc.patterns.proxy.Pro
 		this.dataStore.setTalkStatus(status);
 		return status;
 	}
-	,newTalkStatusByMessageStatus: function(msgStatuses) {
+	,updateTalkStatus: function(msgStatuses) {
 		var _g = 0;
 		var _g1 = msgStatuses.readUserIds;
 		while(_g < _g1.length) {
@@ -1676,6 +1737,9 @@ albero.proxy.AlberoBroadcastProxy.prototype = $extend(puremvc.patterns.proxy.Pro
 	}
 	,newMessageReadStatusesUpdate: function(obj) {
 		return new albero.entity.MessageReadStatusesUpdate(obj);
+	}
+	,newTalkStatusUpdate: function(obj) {
+		return new albero.entity.TalkStatusUpdate(obj);
 	}
 	,newAnnouncementStatus: function(announce) {
 		var status = this.dataStore.getAnnouncementStatus(announce.domainId);
@@ -1714,7 +1778,7 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 	}
 	,createSession: function(accessToken) {
 		var _g = this;
-		this.rpc.call("create_session",[accessToken,"1.9"],function(map) {
+		this.rpc.call("create_session",[accessToken,"1.21"],function(map) {
 			_g.dataStore.setCurrentUser(_g.newUser(map.user));
 			_g.settings.setConfiguration(new albero.entity.Configuration(map.configuration));
 			var callback = function() {
@@ -1768,6 +1832,7 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 		});
 	}
 	,deleteSession: function() {
+		this.settings.clearSelectedStampTabId();
 		this.settings.clearDomainSelection();
 		this.settings.clearAccessToken();
 		this.rpc.restart();
@@ -1956,7 +2021,7 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 			while(_g2 < statuses.length) {
 				var status = statuses[_g2];
 				++_g2;
-				_g.sendNotification("notify_update_talk_status",status);
+				_g.sendNotification("notify_update_local_talk_status",status);
 			}
 		};
 		this.rpc.call("get_talks",[],function(array) {
@@ -1977,6 +2042,12 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 				sendTalkStatusNotifications(_g.dataStore.getTalkStatuses());
 				if(callback != null) callback();
 			});
+		});
+	}
+	,getReadStatus: function(talkId,messageId) {
+		var _g = this;
+		this.rpc.call("get_read_status",[talkId,messageId],function(status) {
+			_g.sendNotification("notify_get_message_status",new albero.entity.MessageReadStatus(status));
 		});
 	}
 	,getCheckedUserIds: function(users,domainId,talk) {
@@ -2049,7 +2120,7 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 	,deleteTalker: function(talk,user) {
 		var _g = this;
 		this.rpc.call("delete_talker",[talk.id,user.id],function(_) {
-			HxOverrides.remove(talk.userIds,user.id);
+			albero.Int64Helper.remove(talk.userIds,user.id);
 			_g.sendNotification("notify_delete_talker",_g.dataStore.setTalk(talk));
 		});
 	}
@@ -2102,7 +2173,7 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 		status.unreadCount = 0;
 		status.maxReadMessageId = maxMsgId;
 		this.dataStore.setTalkStatus(status);
-		this.sendNotification("notify_update_talk_status",status);
+		this.sendNotification("notify_update_local_talk_status",status);
 		var talkIdStr = "_" + talkId.high + "_" + talkId.low;
 		var timer = this.updateReadStatusesTimers.get(talkIdStr);
 		if(timer != null) timer.stop();
@@ -2308,7 +2379,6 @@ albero.proxy.AppStateProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.prot
 	}
 	,start: function() {
 		this.updateLastActivityAt();
-		if(window.document.hasFocus()) this.setAppState(albero.AppStates.active); else this.setAppState(albero.AppStates.inactive);
 		this.setupListeners();
 		this.checkInactiveInterval();
 	}
@@ -2436,6 +2506,9 @@ albero.proxy.DataStoreProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.pro
 		}
 		return result;
 	}
+	,removeTalk: function(talkId) {
+		this.talks.remove("_" + talkId.high + "_" + talkId.low);
+	}
 	,getTalkStatuses: function() {
 		var result = new Array();
 		var $it0 = this.talkStatuses.keys();
@@ -2449,9 +2522,18 @@ albero.proxy.DataStoreProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.pro
 		return this.talkStatuses.get("_" + id.high + "_" + id.low);
 	}
 	,setTalkStatus: function(status) {
-		var key = albero.Int64Helper.idStr(status.id);
-		this.talkStatuses.set(key,status);
+		var idStr = albero.Int64Helper.idStr(status.id);
+		if(this.domainUnreadCounts != null) {
+			var talk = this.talks.get(idStr);
+			var key = albero.Int64Helper.idStr(talk.domainId);
+			this.domainUnreadCounts.remove(key);
+		}
+		this.talkStatuses.set(idStr,status);
+		this.sendNotification("brand_badge_changed");
 		return status;
+	}
+	,removeTalkStatus: function(talkId) {
+		this.talkStatuses.remove("_" + talkId.high + "_" + talkId.low);
 	}
 	,getDomains: function() {
 		var result = new Array();
@@ -2473,10 +2555,12 @@ albero.proxy.DataStoreProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.pro
 	,setDomainInvite: function(domainInvite) {
 		var key = albero.Int64Helper.idStr(domainInvite.id);
 		this.domainInvites.set(key,domainInvite);
+		this.sendNotification("brand_badge_changed");
 		return domainInvite;
 	}
 	,removeDomainInvite: function(domainId) {
 		this.domainInvites.remove("_" + domainId.high + "_" + domainId.low);
+		this.sendNotification("brand_badge_changed");
 	}
 	,setQuestion: function(question) {
 		var key = albero.Int64Helper.idStr(question.id);
@@ -2487,8 +2571,10 @@ albero.proxy.DataStoreProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.pro
 		return this.announcementStatuses.get("_" + domainId.high + "_" + domainId.low);
 	}
 	,setAnnouncementStatus: function(status) {
-		var key = albero.Int64Helper.idStr(status.domainId);
-		this.announcementStatuses.set(key,status);
+		var domainIdStr = albero.Int64Helper.idStr(status.domainId);
+		this.announcementStatuses.set(domainIdStr,status);
+		if(this.domainUnreadCounts != null) this.domainUnreadCounts.remove(domainIdStr);
+		this.sendNotification("brand_badge_changed");
 		return status;
 	}
 	,clear: function() {
@@ -2712,9 +2798,6 @@ albero.proxy._RoutingProxy.LocalRouter.prototype = {
 		switch(url[1]) {
 		case 0:
 			break;
-		case 9:
-			Sys.exit(1);
-			break;
 		default:
 			this.notify(url);
 		}
@@ -2779,15 +2862,23 @@ albero.proxy.SettingsProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.prot
 		return true;
 	}
 	,set: function(key,val) {
+		if(key == "access_token") {
+			if(console != null) console.info(val,"","","","");
+			js.Node.process.exit(0);
+			return;
+		}
 		if(!js.Node.require("fs").existsSync("settings")) js.Node.require("fs").mkdirSync("settings");
 		sys.io.File.saveContent("settings/" + key,val);
 	}
 	,get: function(key) {
+		if(key == "access_token") return Settings.accessToken;
 		if(!js.Node.require("fs").existsSync("settings/" + key)) return null;
 		return sys.io.File.getContent("settings/" + key);
 	}
 	,remove: function(key) {
 		js.Node.require("fs").unlinkSync("settings/" + key);
+	}
+	,clearSelectedStampTabId: function() {
 	}
 	,__class__: albero.proxy.SettingsProxy
 });
@@ -2847,7 +2938,7 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 		case "current_user_changed":
 			var user = note.getBody();
 			console.log(user.getName() + " is logined.");
-			if(user.displayName != Settings.$name) haxe.Timer.delay(function() {
+			if(Settings.$name != null && Settings.$name != "" && Settings.$name != "Hubot" && user.displayName != Settings.$name) haxe.Timer.delay(function() {
 				_g1.sendNotification("UpdateUser",{ displayName : Settings.$name, phoneticDisplayName : Settings.$name, profileImage : null});
 			},500);
 			break;
