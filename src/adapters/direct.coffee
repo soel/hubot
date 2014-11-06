@@ -1,6 +1,7 @@
 
 # customize
 endpoint = process.env.HUBOT_DIRECT_ENDPOINT ? "wss://api.direct4b.com/albero-app-server/api"
+accessToken = process.env.HUBOT_DIRECT_TOKEN
 
 # Hubot dependencies
 Robot                                                = require '../robot'
@@ -32,6 +33,7 @@ class Direct extends Adapter
      host:     url.parse(endpoint).host
      endpoint: endpoint
      name:     @robot.name
+     access_token: accessToken
 
    bot = DirectAPI.getInstance();
    bot.setOptions options
