@@ -2975,7 +2975,13 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 					++_g1;
 					emit("EnterMessage",uid);
 				}
-			} else if(subtype == "delete_talker") emit("LeaveMessage",content.deleted_user_id);
+			} else if(subtype == "delete_talker") {
+				emit("LeaveMessage",content.deleted_user_id);
+				if(content.user_ids.length <= 1) this.sendNotification("Talk",albero.command.TalkAction.DELETE(talk));
+			} else if(subtype == "hide_pair_talk") {
+				emit("LeaveMessage",content.user_id);
+				this.sendNotification("Talk",albero.command.TalkAction.DELETE(talk));
+			}
 		} else {
 			var text = null;
 			var _g2 = msg.type;
@@ -2983,22 +2989,8 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 			case 1:
 				text = content;
 				break;
-			case 2:
-				text = content.text;
-				break;
-			case 5:case 7:
-				text = msg.content.title;
-				break;
-			case 9:
-				text = msg.content.question;
-				break;
-			case 8:
-				var options = content.options;
-				var res = content.response;
-				text = options[res];
-				break;
 			default:
-				text = null;
+				text = JSON.stringify(msg.content);
 			}
 			if(text != null) {
 				text = StringTools.replace(text,"　"," ");
