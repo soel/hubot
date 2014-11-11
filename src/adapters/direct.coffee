@@ -25,6 +25,9 @@ class Direct extends Adapter
 
   reply: (envelope, strings...) ->
     @send envelope, strings.map((str) -> "@#{envelope.user.name} #{str}")...
+
+  leave: (envelope) ->
+    @bot.leave envelope
  
   run: ->
    self = @

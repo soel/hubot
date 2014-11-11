@@ -66,6 +66,12 @@ class Response
   locked: (strings...) ->
     @robot.adapter.locked @envelope, strings...
 
+  # Public: Leave myself from the room
+  #
+  # Returns nothing
+  leave: () ->
+    @robot.adapter.leave @envelope
+
   # Public: Picks a random item from the given items.
   #
   # items - An Array of items.
