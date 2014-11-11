@@ -32,24 +32,46 @@ DirectAPI.prototype = {
 		var roomId = envelope.room;
 		var talkId = albero.Int64Helper.idStrToInt64(roomId);
 		if(talkId == null || text == null || text.length == 0) return;
-		var msg = new albero.entity.Message();
-		msg.talkId = talkId;
-		if(StringTools.startsWith(text,"{") && StringTools.endsWith(text,"}")) this.sendObject(msg,text); else {
-			msg.type = albero.entity.MessageType.text;
-			this.sendTexts(msg,TextHelper.slice(text,300));
+		var msgs = new Array();
+		if(StringTools.startsWith(text,"{") && StringTools.endsWith(text,"}")) {
+			var msg = new albero.entity.Message();
+			msg.talkId = talkId;
+			this.setContent(msg,text);
+			msgs.push(msg);
+		} else {
+			var _g = 0;
+			var _g1 = TextHelper.slice(text,1024);
+			while(_g < _g1.length) {
+				var text1 = _g1[_g];
+				++_g;
+				var msg1 = new albero.entity.Message();
+				msg1.talkId = talkId;
+				msg1.type = albero.entity.MessageType.text;
+				msg1.content = text1;
+				msgs.push(msg1);
+			}
 		}
+		this.sendMessages(msgs);
 	}
-	,sendTexts: function(msg,texts) {
-		var _g = this;
-		msg.content = texts.shift();
-		this.facade.sendNotification("Send",msg);
-		if(texts.length > 0) haxe.Timer.delay(function() {
-			_g.sendTexts(msg,texts);
-		},500);
+	,sendMessages: function(msgs) {
+		if(msgs != null && msgs.length > 0) {
+			if(this.sendQueue == null) this.sendQueue = msgs; else {
+				var _g = 0;
+				while(_g < msgs.length) {
+					var msg = msgs[_g];
+					++_g;
+					this.sendQueue.push(msg);
+				}
+			}
+		}
+		if(this.sendQueue == null) return;
+		var msg1 = this.sendQueue.shift();
+		this.facade.sendNotification("Send",msg1);
+		if(this.sendQueue.length == 0) this.sendQueue = null; else haxe.Timer.delay($bind(this,this.sendMessages),500);
 	}
-	,sendObject: function(msg,text) {
+	,setContent: function(msg,json) {
 		var obj;
-		obj = JSON.parse(text);
+		obj = JSON.parse(json);
 		if(obj.stamp_set != null) {
 			msg.type = albero.entity.MessageType.stamp;
 			obj.stamp_index = albero.Int64Helper.parse(obj.stamp_index);
@@ -61,7 +83,6 @@ DirectAPI.prototype = {
 			if(obj.in_reply_to == null) msg.type = albero.entity.MessageType.todo; else msg.type = albero.entity.MessageType.todoDone;
 		}
 		msg.content = obj;
-		this.facade.sendNotification("Send",msg);
 	}
 	,listen: function() {
 		this.facade = albero.AppFacade.getInstance();
