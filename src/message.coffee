@@ -74,6 +74,7 @@ module.exports = {
   TextMessage
   EnterMessage
   LeaveMessage
+  JoinMessage
   TopicMessage
   CatchAllMessage
 }
