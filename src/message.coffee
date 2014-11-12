@@ -55,6 +55,13 @@ class LeaveMessage extends Message
 # id   - A String of the message ID.
 class TopicMessage extends TextMessage
 
+# Represents an incoming myself entrance notification.
+#
+# user - A User instance for myself.
+# text - Always null.
+# id   - Always null.
+class JoinMessage extends Message
+
 class CatchAllMessage extends Message
   # Represents a message that no matchers matched.
   #

@@ -6,7 +6,7 @@ accessToken = process.env.HUBOT_DIRECT_TOKEN
 # Hubot dependencies
 Robot                                                = require '../robot'
 Adapter                                              = require '../adapter'
-{TextMessage,EnterMessage,LeaveMessage,TopicMessage} = require '../message'
+{TextMessage,EnterMessage,LeaveMessage,JoinMessage,TopicMessage} = require '../message'
 
 # dependencies
 EventEmitter = require('events').EventEmitter
@@ -64,6 +64,10 @@ class Direct extends Adapter
    bot.on "LeaveMessage",
      withAuthor (envelope, msg) ->
        self.receive new LeaveMessage envelope, null, msg.id
+
+   bot.on "JoinMessage",
+     withAuthor (envelope, msg) ->
+       self.receive new JoinMessage envelope, null, null
 
    bot.listen()
 

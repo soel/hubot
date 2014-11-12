@@ -137,6 +137,18 @@ class Robot
       callback
     )
 
+  # Public: Adds a Listener that triggers when I enter the room.
+  #
+  # callback - A Function that is called with a Response object.
+  #
+  # Returns nothing.
+  join: (callback) ->
+    @listeners.push new Listener(
+      @,
+      ((msg) -> msg instanceof JoinMessage),
+      callback
+    )
+
   # Public: Adds a Listener that triggers when anyone changes the topic.
   #
   # callback - A Function that is called with a Response object.
