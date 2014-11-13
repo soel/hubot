@@ -3241,11 +3241,25 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 				text = content;
 				break;
 			default:
-				text = JSON.stringify(msg.content);
+				var obj;
+				obj = JSON.parse(JSON.stringify(msg.content));
+				var _g11 = 0;
+				var _g21 = Reflect.fields(obj);
+				while(_g11 < _g21.length) {
+					var fieldName = _g21[_g11];
+					++_g11;
+					var val = Reflect.field(obj,fieldName);
+					if(fieldName == "stamp_index" || fieldName == "in_reply_to") {
+						if(Reflect.isObject(obj) && val.high != null && val.low != null) Reflect.setField(obj,fieldName,haxe.Int64.toStr(haxe.Int64.make(val.high,val.low)));
+					}
+				}
+				text = JSON.stringify(obj);
 			}
 			if(text != null) {
 				text = StringTools.replace(text,"　"," ");
-				if(!StringTools.startsWith(text,Settings.$name)) text = Settings.$name + " " + text;
+				if(talk.type == albero.entity.TalkType.PairTalk) {
+					if(!StringTools.startsWith(text,Settings.$name)) text = Settings.$name + " " + text;
+				}
 				emit("TextMessage",msg.userId,text);
 			}
 		}
@@ -3370,6 +3384,9 @@ haxe.Int64.compare = function(a,b) {
 haxe.Int64.ucompare = function(a,b) {
 	var v = haxe.Int64.uicompare(a.high,b.high);
 	if(v != 0) return v; else return haxe.Int64.uicompare(a.low,b.low);
+};
+haxe.Int64.toStr = function(a) {
+	return a.toString();
 };
 haxe.Int64.prototype = {
 	toString: function() {

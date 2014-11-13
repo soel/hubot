@@ -10,6 +10,8 @@ Response = require './response'
 {Listener,TextListener} = require './listener'
 {EnterMessage,LeaveMessage,JoinMessage,TopicMessage,CatchAllMessage} = require './message'
 
+direct = require './robot-direct'
+
 HUBOT_DEFAULT_ADAPTERS = [
   'campfire'
   'shell'
@@ -67,7 +69,6 @@ class Robot
     process.on 'uncaughtException', (err) =>
       @emit 'error', err
 
-
   # Public: Adds a Listener that attempts to match incoming messages based on
   # a Regex.
   #
@@ -76,6 +77,8 @@ class Robot
   #
   # Returns nothing.
   hear: (regex, callback) ->
+    if typeof(regex) == 'string'
+      [regex, callback] = direct.jsonMatcher(regex, callback)
     @listeners.push new TextListener(@, regex, callback)
 
   # Public: Adds a Listener that attempts to match incoming messages directed
@@ -87,6 +90,8 @@ class Robot
   #
   # Returns nothing.
   respond: (regex, callback) ->
+    if typeof(regex) == 'string'
+      [regex, callback] = direct.jsonMatcher(regex, callback)
     re = regex.toString().split('/')
     re.shift()
     modifiers = re.pop()

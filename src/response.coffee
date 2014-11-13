@@ -39,31 +39,6 @@ class Response
   reply: (strings...) ->
     @robot.adapter.reply @envelope, strings...
 
-  # Public: Filtering JSON Message.
-  #
-  # property - String to be a property name which must be exist.
-  #
-  # callback - Call with JSON object.
-  #
-  # Returns nothing.
-  json: (property, callback) ->
-    obj = JSON.parse @match[1]
-    callback obj if obj[property]?
-
-  # Public: Map
-  map: (callback) ->
-    text = @match[1].replace(/[\n\r]/g, " ")
-    m = text.match(/^今ココ[:：] (.*) \(近辺\) (http:\/\/.*)$/)
-    if m?
-      @http("https://www.googleapis.com/urlshortener/v1/url?shortUrl=" + m[2])
-        .get() (err, res, body) ->
-          json = JSON.parse body
-          loc = json.longUrl.match(/q=([0-9.]+),([0-9.]+)/)
-          callback
-            place:m[1]
-            lat:loc[1]
-            lng:loc[2]
-
   # Public: Download contents from the URL and save to a file.
   #
   # remoteFile - Strings to be url or Object to be file parameters.

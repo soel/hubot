@@ -67,43 +67,34 @@
 
 ### スタンプ
 
-	robot.respond /({.*})/, (msg) ->
-		msg.json "stamp_set", (obj) ->
-			msg.send "#{obj.stamp_set} - #{obj.stamp_index}"
+	robot.respond "stamp", (msg) ->
+		msg.send "#{msg.json.stamp_set} - #{msg.json.stamp_index}"
 
 ### Yes/No スタンプの回答
 
-	robot.respond /({.*})/, (msg) ->
-		msg.json "response", (obj) ->
-			unless obj.options?
-				msg.send "Your answer is #{[obj.response]}."
+	robot.respond "yesno", (msg) ->
+		msg.send "Your answer is #{[msg.json.response]}."
 
 ### セレクトスタンプの回答
 
-	robot.respond /({.*})/, (msg) ->
-		msg.json "response", (obj) ->
-			if obj.options?
-				msg.send "Your answer is #{obj.options[obj.response]}."
+	robot.respond "select", (msg) ->
+		msg.send "Your answer is #{msg.json.options[msg.json.response]}."
 
 ### ファイル
 
-	robot.respond /({.*})/, (msg) ->
-	    msg.json "file_id", (obj) ->
-			# obj.file_id
-			# obj.name
-			# obj.content_type  # "image/*" -> 画像, "video/*" -> 動画
-			# obj.content_size
-			# obj.url
-			# obj.thumbnail_url
-			msg.download obj, (path) ->
-				msg.send "downloaded to #{path}"
+	robot.respond "file", (msg) ->
+		msg.send "File received.
+			name: #{msg.json.name}
+			type: #{msg.json.content_type} 
+			size: #{msg.json.content_size}bytes"
+		msg.download msg.json, (path) ->
+			msg.send "downloaded to #{path}"
 
 ### 位置情報
 
-	robot.respond /^((.|[\n\r])*)$/, (msg) ->
-		msg.map (obj) ->
-			msg.send "Your location is #{obj.place} at #{obj.lat}, #{obj.lng}" # 住所/緯度/経度
-		
+	robot.respond "map", (msg) ->
+		msg.send "Your location is #{msg.json.place} at #{msg.json.lat}, #{msg.json.lng}"
+
 ## トークルーム情報の取得
 
 以下のコードブロックの内側についてのものとします。
@@ -123,6 +114,10 @@
 
 	msg.send "Group talk name is #{room.topic}"  # string or undefined
 
+### トークルームの種類
+
+ 	msg.send "This room is " + (room.type == 0 ? "pair" : "group") + " talk."
+
 ### トークの参加者情報の取得
 
 	text = ""
@@ -135,6 +130,23 @@
 
 	module.exports = (robot) ->
 		# here
+
+### ペアトークでのメッセージ受信 (hubot)
+
+	robot.respond /.../, (msg) ->
+		room = msg.message.user.rooms[msg.message.room]
+		msg.send "" if room.type == 0
+
+### グループトークでのメッセージ受信 (hubot)
+ 
+	robot.hear /.../, (msg) ->
+		msg.send ""
+
+「@ボット名 メッセージ」の場合
+
+	robot.respond /.../, (msg) ->
+		room = msg.message.user.rooms[msg.message.room]
+		msg.send "" unless room.type == 0
 
 ### トークルームへのユーザーの参加 (hubot)
 
