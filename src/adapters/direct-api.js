@@ -10,6 +10,7 @@ function $extend(from, fields) {
 var DirectAPI = $hx_exports.DirectAPI = function() {
 	var EventEmitter = require('events').EventEmitter;
 	this.eventEmitter = new EventEmitter();
+	js.Node.require("unorm");
 };
 $hxClasses["DirectAPI"] = DirectAPI;
 DirectAPI.__name__ = ["DirectAPI"];
@@ -36,7 +37,13 @@ DirectAPI.prototype = {
 		if(StringTools.startsWith(text,"{") && StringTools.endsWith(text,"}")) {
 			var msg = new albero.entity.Message();
 			msg.talkId = talkId;
-			this.setContent(msg,text);
+			msg.content = this.parseContent(text);
+			msg.type = this.detectType(msg.content);
+			if(msg.type == albero.entity.MessageType.unknown) return;
+			if(msg.type == albero.entity.MessageType.file && msg.content.path != null) {
+				this.sendFile(envelope,msg.content);
+				return;
+			}
 			msgs.push(msg);
 		} else {
 			var _g = 0;
@@ -69,20 +76,64 @@ DirectAPI.prototype = {
 		this.facade.sendNotification("Send",msg1);
 		if(this.sendQueue.length == 0) this.sendQueue = null; else haxe.Timer.delay($bind(this,this.sendMessages),500);
 	}
-	,setContent: function(msg,json) {
+	,parseContent: function(json) {
 		var obj;
 		obj = JSON.parse(json);
-		if(obj.stamp_set != null) {
-			msg.type = albero.entity.MessageType.stamp;
-			obj.stamp_index = albero.Int64Helper.parse(obj.stamp_index);
-		} else if(obj.lat != null) msg.type = albero.entity.MessageType.geo; else if(obj.file_id != null) msg.type = albero.entity.MessageType.file; else if(obj.question != null) {
-			if(obj.in_reply_to == null) {
-				if(obj.options == null) msg.type = albero.entity.MessageType.yesOrNo; else msg.type = albero.entity.MessageType.selectOne;
-			} else if(obj.options == null) msg.type = albero.entity.MessageType.yesOrNoReply; else msg.type = albero.entity.MessageType.selectOneReply;
-		} else if(obj.title != null) {
-			if(obj.in_reply_to == null) msg.type = albero.entity.MessageType.todo; else msg.type = albero.entity.MessageType.todoDone;
+		if(obj == null) return null;
+		var _g = 0;
+		var _g1 = Reflect.fields(obj);
+		while(_g < _g1.length) {
+			var fieldName = _g1[_g];
+			++_g;
+			var val = Reflect.field(obj,fieldName);
+			if(typeof(val) == "string") {
+				if(fieldName == "stamp_index" || fieldName == "in_reply_to") Reflect.setField(obj,fieldName,albero.Int64Helper.parse(val));
+			} else if(Reflect.isObject(obj)) {
+				if(val.high != null && val.low != null) Reflect.setField(obj,fieldName,haxe.Int64.make(val.high,val.low));
+			}
 		}
-		msg.content = obj;
+		return obj;
+	}
+	,detectType: function(obj) {
+		if(obj == null) return albero.entity.MessageType.unknown;
+		if(obj.stamp_set != null) return albero.entity.MessageType.stamp; else if(obj.lat != null) return albero.entity.MessageType.geo; else if(obj.file_id != null || obj.path != null) return albero.entity.MessageType.file; else if(obj.question != null) {
+			if(obj.in_reply_to == null) {
+				if(obj.options == null) return albero.entity.MessageType.yesOrNo; else return albero.entity.MessageType.selectOne;
+			} else if(obj.options == null) return albero.entity.MessageType.yesOrNoReply; else return albero.entity.MessageType.selectOneReply;
+		} else if(obj.title != null) {
+			if(obj.in_reply_to == null) return albero.entity.MessageType.todo; else return albero.entity.MessageType.todoDone;
+		} else return albero.entity.MessageType.unknown;
+	}
+	,sendFile: function(envelope,localFile) {
+		var path;
+		var name = null;
+		var type = null;
+		if(typeof(localFile) == "string") path = localFile; else {
+			path = localFile.path;
+			name = localFile.name;
+			type = localFile.type;
+		}
+		if(path == null || !js.Node.require("fs").existsSync(path)) return;
+		var roomId = envelope.room;
+		var talkId = albero.Int64Helper.idStrToInt64(roomId);
+		this.facade.sendNotification("File",albero.command.FileAction.UPLOAD_PATH(talkId,path,name,type));
+	}
+	,download: function(envelope,remoteFile,callback) {
+		var url;
+		var path = null;
+		var name = null;
+		if(typeof(remoteFile) == "string") url = remoteFile; else {
+			url = remoteFile.url;
+			path = remoteFile.path;
+			name = remoteFile.name;
+		}
+		if(url == null) {
+			callback(null);
+			return;
+		}
+		if(name == null) name = js.Node.require("path").basename(url);
+		if(path == null) path = js.Node.require("path").join(js.Node.require("os").tmpdir(),name);
+		this.facade.sendNotification("File",albero.command.FileAction.DOWNLOAD_PATH(url,path,callback));
 	}
 	,leave: function(envelope) {
 		var _g = this;
@@ -241,6 +292,9 @@ Reflect.field = function(o,field) {
 		return null;
 	}
 };
+Reflect.setField = function(o,field,value) {
+	o[field] = value;
+};
 Reflect.fields = function(o) {
 	var a = [];
 	if(o != null) {
@@ -250,6 +304,11 @@ Reflect.fields = function(o) {
 		}
 	}
 	return a;
+};
+Reflect.isObject = function(v) {
+	if(v == null) return false;
+	var t = typeof(v);
+	return t == "string" || t == "object" && v.__enum__ == null || t == "function" && (v.__name__ || v.__ename__) != null;
 };
 var Std = function() { };
 $hxClasses["Std"] = Std;
@@ -716,19 +775,40 @@ albero.command.FileCommand.prototype = $extend(albero.command.AutoBindCommand.pr
 		case 0:
 			var file = body[3];
 			var talk = body[2];
-			this.api.upload(talk.id,file);
+			this.api.upload(talk.domainId,talk.id,file);
 			break;
 		case 1:
 			var info = body[2];
 			this.api.deleteFile(info.id);
 			break;
+		case 2:
+			var type = body[5];
+			var name = body[4];
+			var path = body[3];
+			var talkId = body[2];
+			var info1 = this.fileService.createDummyFile(path);
+			info1.path = path;
+			info1.size = js.Node.require("fs").statSync(path).size;
+			if(name != null) info1.name = name;
+			if(type != null) info1.type = type;
+			var talk1 = this.dataStore.getTalk(talkId);
+			this.api.upload(talk1.domainId,talk1.id,info1);
+			break;
+		case 3:
+			var callback = body[4];
+			var path1 = body[3];
+			var url = body[2];
+			this.fileService.download(url,path1,callback);
+			break;
 		}
 	}
 	,__class__: albero.command.FileCommand
 });
-albero.command.FileAction = { __ename__ : true, __constructs__ : ["UPLOAD","DELETE"] };
+albero.command.FileAction = { __ename__ : true, __constructs__ : ["UPLOAD","DELETE","UPLOAD_PATH","DOWNLOAD_PATH"] };
 albero.command.FileAction.UPLOAD = function(talk,file) { var $x = ["UPLOAD",0,talk,file]; $x.__enum__ = albero.command.FileAction; $x.toString = $estr; return $x; };
 albero.command.FileAction.DELETE = function(info) { var $x = ["DELETE",1,info]; $x.__enum__ = albero.command.FileAction; $x.toString = $estr; return $x; };
+albero.command.FileAction.UPLOAD_PATH = function(talkId,path,name,type) { var $x = ["UPLOAD_PATH",2,talkId,path,name,type]; $x.__enum__ = albero.command.FileAction; $x.toString = $estr; return $x; };
+albero.command.FileAction.DOWNLOAD_PATH = function(url,path,callback) { var $x = ["DOWNLOAD_PATH",3,url,path,callback]; $x.__enum__ = albero.command.FileAction; $x.toString = $estr; return $x; };
 albero.command.ManageFriendsCommand = function() {
 	albero.command.AutoBindCommand.call(this);
 };
@@ -2217,9 +2297,8 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 		},1000);
 		this.updateReadStatusesTimers.set(talkIdStr,timer);
 	}
-	,upload: function(talkId,file) {
+	,upload: function(domainId,talkId,file) {
 		var _g = this;
-		var domainId = this.settings.getSelectedDomainId();
 		var fileName = file.name.normalize("NFKC");
 		this.uploadFile(file,domainId,albero.proxy._AlberoServiceProxy.UploadUseType.MESSAGE,function(auth) {
 			_g.createMessage(talkId,albero.entity.MessageType.file,{ file_id : auth.file_id, content_type : file.type, content_size : file.size, name : fileName, url : auth.get_url});
@@ -2633,8 +2712,126 @@ albero.proxy.FileServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.p
 	getValidHost: function() {
 		return "https://" + Settings.host;
 	}
+	,downloadUrl: function(url) {
+		if(url == null || url.length == 0) return "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+		if(StringTools.startsWith(url,this.validHost)) {
+			var accessToken = this.settings.getAccessToken();
+			return url + "?Authorization=ALB%20" + accessToken;
+		} else return url;
+	}
+	,download: function(url,path,callback) {
+		var _g = this;
+		url = this.downloadUrl(url);
+		if(StringTools.startsWith(url,"data:")) {
+			callback(null);
+			return;
+		}
+		var req = js.Node.require("https").request(url,function(res) {
+			var loc = res.headers.location;
+			if(loc != null) {
+				console.log("redirect to " + loc);
+				_g.download(loc,path,callback);
+				return;
+			}
+			if(Math.floor(res.statusCode / 100) != 2) {
+				console.log("Got error: " + res.statusCode);
+				callback(null);
+				return;
+			}
+			var out = js.Node.require("fs").createWriteStream(path);
+			res.on("data",function(chunk) {
+				out.write(chunk);
+			});
+			res.on("end",function() {
+				out.end();
+				callback(path);
+			});
+			res.on("error",function(e) {
+				callback(null);
+			});
+			out.on("error",function(e1) {
+				callback(null);
+			});
+		});
+		req.on("error",function(e2) {
+			console.log("Got error: " + e2.message);
+			callback(null);
+		});
+		req.end();
+	}
 	,upload: function(auth,contentType,file,callback) {
-		console.log("file upload is not supported.");
+		var _g = this;
+		var options = js.Node.require("url").parse(auth.put_url);
+		options.method = "PUT";
+		options.headers = { };
+		options.headers["Content-Length"] = file.size;
+		options.headers["Content-Type"] = auth.post_form["Content-Type"];
+		options.headers["Content-Disposition"] = auth.post_form["Content-Disposition"];
+		var req = js.Node.require("https").request(options,function(res) {
+			if(Math.floor(res.statusCode / 100) != 2) {
+				var data = "";
+				res.on("data",function(chunk) {
+					data += chunk;
+				});
+				res.on("end",function() {
+					_g.uploadFailed(res.statusCode + ": " + data);
+				});
+				return;
+			}
+			callback();
+		});
+		req.on("error",function(e) {
+			_g.uploadFailed(e.message);
+		});
+		var f = js.Node.require("fs").createReadStream(file.path);
+		f.on("data",function(chunk1) {
+			req.write(chunk1);
+		});
+		f.on("end",function() {
+			req.end();
+		});
+		f.on("error",function() {
+			req.end();
+		});
+	}
+	,uploadFailed: function(errorMessage) {
+		console.log("uploadFailed. " + errorMessage);
+		this.sendNotification("error_occurred",{ message : "ファイルの送信に失敗しました。"});
+	}
+	,createDummyFile: function(filePath) {
+		var paths = filePath.split("\\");
+		if(paths.length == 0) return null;
+		var name = paths[paths.length - 1];
+		if(name.length == 0) return null;
+		var type = "application/octet-stream";
+		var exts = name.split(".");
+		if(exts.length > 1) {
+			var _g = exts[exts.length - 1];
+			switch(_g) {
+			case "txt":
+				type = "text/plain";
+				break;
+			case "htm":case "html":
+				type = "text/html";
+				break;
+			case "xml":
+				type = "text/xml";
+				break;
+			case "gif":
+				type = "image/gif";
+				break;
+			case "jpg":case "jpeg":
+				type = "image/jpeg";
+				break;
+			case "png":
+				type = "image/png";
+				break;
+			case "pdf":
+				type = "application/pdf";
+				break;
+			}
+		}
+		return { name : name, size : 1, type : type};
 	}
 	,__class__: albero.proxy.FileServiceProxy
 });
@@ -4317,7 +4514,7 @@ if(version[0] > 0 || version[1] >= 9) {
 }
 var WebSocketServer = js.Node.require("websocket").server;
 albero.command.DomainCommand.__meta__ = { fields : { api : { inject : null}}};
-albero.command.FileCommand.__meta__ = { fields : { api : { inject : null}}};
+albero.command.FileCommand.__meta__ = { fields : { api : { inject : null}, dataStore : { inject : null}, fileService : { inject : null}}};
 albero.command.ManageFriendsCommand.__meta__ = { fields : { api : { inject : null}}};
 albero.command.ReadCommand.__meta__ = { fields : { api : { inject : null}}};
 albero.command.ReloadDataCommand.__meta__ = { fields : { api : { inject : null}}};
@@ -4336,6 +4533,7 @@ albero.proxy.AlberoServiceProxy.__meta__ = { fields : { rpc : { inject : null}, 
 albero.proxy.AlberoServiceProxy.NAME = "api";
 albero.proxy.AppStateProxy.NAME = "appState";
 albero.proxy.DataStoreProxy.NAME = "dataStore";
+albero.proxy.FileServiceProxy.__meta__ = { fields : { settings : { inject : null}}};
 albero.proxy.FileServiceProxy.NAME = "fileService";
 albero.proxy.FormatterProxy.NAME = "formatter";
 albero.proxy.MsgPackRpcProxy.__meta__ = { fields : { broadcast : { inject : null}}};
