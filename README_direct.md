@@ -109,26 +109,25 @@
 以下のコードブロックの内側についてのものとします。
 
 	module.exports = (robot) ->
-		robot.respond /.../i, (msg) ->
-			user = msg.user
+		robot.respond /room/i, (msg) ->
+			user = msg.message.user
 			room = user.rooms[msg.message.room]
 			# here
 
 ### トークルーム一覧の取得
 
-	user.rooms  # array of Talk object
+	msg.send "Joined talk count is #{Object.keys(user.rooms).length}"
+	# array of joined Talk object
 
 ### グループトーク名の取得
 
-	room.topic  # string or null
+	msg.send "Group talk name is #{room.topic}"  # string or undefined
 
 ### トークの参加者情報の取得
 
-	for user in room.users
-		# user.name
-		# user.email
-		# user.profile_url
-
+	text = ""
+    text += "#{user.name} #{user.email} #{user.profile_url}\n" for user in room.users
+    msg.send text
 
 ## イベント
 
@@ -140,20 +139,17 @@
 ### トークルームへのユーザーの参加 (hubot)
 
 	robot.enter (msg) ->
-		# msg.user : 参加したユーザ
+		msg.send "Hi! #{msg.message.user.name}"
 
 ### トークルームからのユーザーの退出 (hubot)
 
 	robot.leave (msg) ->
-		# msg.user : 退出したユーザ
+		msg.send "Good bye! #{msg.message.user.name}"
 
 ### 招待による自分自身のトークルームへの参加
 
-【未実装】
-
 	robot.join (msg) ->
-		# msg.user : 自分自身
-
+		msg.send "Nice to meet you!"
 
 ## その他
 
