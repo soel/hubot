@@ -39,6 +39,24 @@ class Response
   reply: (strings...) ->
     @robot.adapter.reply @envelope, strings...
 
+  # Public: Posts a file mentioning the current user.
+  #
+  # localFile - String to be local file path or Object to be file parameters.
+  #
+  # Returns nothing.
+  sendFile: (localFile) ->
+    @robot.adapter.sendFile @envelope, localFile
+
+  # Public: Download contents from the URL and save to a file.
+  #
+  # remoteFile - Strings to be url or Object to be file parameters.
+  #
+  # callback - Call with file path when downloading is finished.
+  #
+  # Returns nothing.
+  download: (remoteFile, callback) ->
+    @robot.adapter.download @envelope, remoteFile, callback
+
   # Public: Posts a topic changing message
   #
   # strings - One or more strings to set as the topic of the

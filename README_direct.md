@@ -35,10 +35,6 @@
 
 ### ファイル
 
-【未実装】
-
-	msg.upload "your/file/path.png", (file) ->
-		msg.send JSON.stringify file
 
 
 ## トークルーム情報の取得
@@ -65,6 +61,8 @@
 		# user.name
 		# user.email
 		# user.profile_url
+	msg.sendFile "your/file/path.png"
+	
 
 ## メッセージの取得
 
@@ -99,10 +97,10 @@
 		obj = JSON.parse msg.match[1]
 		if obj.in_reply_to == question.msg_id
 			# obj.response   # 選択肢の番号
-	
-### ファイル
 
-【未実装】
+		
+
+### ファイル
 
 	robot.respond /^({.*file_id.*})$/i, (msg) ->
 		obj = JSON.parse msg.match[1]
@@ -112,8 +110,8 @@
 		# obj.content_size
 		# obj.url
 		# obj.thumbnail_url
-		msg.download obj.url, DIR + obj.file_id, (path) ->
-			console.log "downloaded to #{path}"		
+		msg.download obj, (path) ->
+			console.log "downloaded to #{path}"
 
 ## イベント
 

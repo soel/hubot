@@ -26,6 +26,12 @@ class Direct extends Adapter
   reply: (envelope, strings...) ->
     @send envelope, strings.map((str) -> "@#{envelope.user.name} #{str}")...
 
+  sendFile: (envelope, localFile) ->
+    @bot.sendFile envelope, localFile
+
+  download: (envelope, remoteFile, callback) ->
+    @bot.download envelope, remoteFile, callback
+
   leave: (envelope) ->
     @bot.leave envelope
  
