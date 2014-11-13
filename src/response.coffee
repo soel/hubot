@@ -39,14 +39,6 @@ class Response
   reply: (strings...) ->
     @robot.adapter.reply @envelope, strings...
 
-  # Public: Posts a file mentioning the current user.
-  #
-  # localFile - String to be local file path or Object to be file parameters.
-  #
-  # Returns nothing.
-  sendFile: (localFile) ->
-    @robot.adapter.sendFile @envelope, localFile
-
   # Public: Download contents from the URL and save to a file.
   #
   # remoteFile - Strings to be url or Object to be file parameters.

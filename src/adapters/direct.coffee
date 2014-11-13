@@ -19,15 +19,14 @@ class Direct extends Adapter
     strings.forEach (string) =>
       if typeof(string) == 'function'
         string()
+      else if typeof(string) == 'object'
+        @bot.send envelope, JSON.stringify(string)
       else
         @robot.logger.debug "Sending strings to user: " + envelope.user.name
         @bot.send envelope, string
 
   reply: (envelope, strings...) ->
     @send envelope, strings.map((str) -> "@#{envelope.user.name} #{str}")...
-
-  sendFile: (envelope, localFile) ->
-    @bot.sendFile envelope, localFile
 
   download: (envelope, remoteFile, callback) ->
     @bot.download envelope, remoteFile, callback

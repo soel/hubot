@@ -17,51 +17,39 @@
 
 ### スタンプ
 	
-	msg.send JSON.stringify
-		stamp_set: 123
-		stamp_index: 1
-  		text: "おはよう"  # テキスト付きスタンプの場合のみ
+	msg.send
+		stamp_set: 3
+		stamp_index: "1152921507291203198"
+  		text: "おはよう"  # (Option) テキスト付きスタンプの場合のみ
+
+※ stamp_set と stamp_index は、ブラウザの「要素の検証」等で確認してください。
+
+	<img src="./images/stamp/3/1152921507291203198.png">
+	
 
 ### Yes/No スタンプ
 
-	msg.send JSON.stringify
+	msg.send
 		question: "質問内容"
 
 ### セレクトスタンプ
 
-	msg.send JSON.stringify
+	msg.send
 	    question: "質問内容"
 	    options: ["選択肢1", "選択肢2", "選択肢3"]
 
+### タスクスタンプ
+
+	msg.send
+		title: "すること"
+		closing_type: 0  # (Option) 誰かが:0, 全員が:1
+
 ### ファイル
 
-
-
-## トークルーム情報の取得
-
-以下のコードブロックの内側についてのものとします。
-
-	module.exports = (robot) ->
-		robot.respond /.../i, (msg) ->
-			user = msg.user
-			room = user.rooms[msg.message.room]
-			# here
-
-### トークルーム一覧の取得
-
-	user.rooms  # array of Talk object
-
-### グループトーク名の取得
-
-	room.topic  # string or null
-
-### トークの参加者情報の取得
-
-	for user in room.users
-		# user.name
-		# user.email
-		# user.profile_url
-	msg.sendFile "your/file/path.png"
+	msg.send
+		path: "your/file/name.png"
+		name: "name.png"    # (Option) アップロード名
+		type: "image/png"   # (Option) MIME
 	
 
 ## メッセージの取得
@@ -88,16 +76,26 @@
 
 	robot.respond /^({.*in_reply_to.*})$/i, (msg) ->
 		obj = JSON.parse msg.match[1]
-		if obj.in_reply_to == question.msg_id
+		if obj.in_reply_to == "your_question_msg_id"
 			# obj.response   # true -> Yes, false -> No
 
 ### セレクトスタンプの回答
 
 	robot.respond /^({.*in_reply_to.*})$/i, (msg) ->
 		obj = JSON.parse msg.match[1]
-		if obj.in_reply_to == question.msg_id
+		if obj.in_reply_to == "your_question_msg_id"
 			# obj.response   # 選択肢の番号
 
+### 位置情報
+
+	robot.respond /^今ココ：((.|[\n\r])*)\(近辺\)(http://.*)$/, (msg) ->
+		# msg.patch[1] # 住所
+		msg.http("https://www.googleapis.com/urlshortener/v1/url?shortUrl=" + msg.patch[3])
+			.get() (err, res, body) ->
+				json = JSON.parse body
+				loc = json.longUrl.match(/q=([0-9.]+),([0-9.]+)/)
+				# loc[1] # 緯度
+				# loc[2] # 軽度
 		
 
 ### ファイル
@@ -112,6 +110,33 @@
 		# obj.thumbnail_url
 		msg.download obj, (path) ->
 			console.log "downloaded to #{path}"
+
+			
+## トークルーム情報の取得
+
+以下のコードブロックの内側についてのものとします。
+
+	module.exports = (robot) ->
+		robot.respond /.../i, (msg) ->
+			user = msg.user
+			room = user.rooms[msg.message.room]
+			# here
+
+### トークルーム一覧の取得
+
+	user.rooms  # array of Talk object
+
+### グループトーク名の取得
+
+	room.topic  # string or null
+
+### トークの参加者情報の取得
+
+	for user in room.users
+		# user.name
+		# user.email
+		# user.profile_url
+
 
 ## イベント
 
