@@ -52,7 +52,7 @@
 		type: "image/png"   # (Option) MIME
 	
 
-## メッセージの取得
+## メッセージの受信
 
 以下のコードブロックの内側についてのものとします。
 
@@ -62,7 +62,7 @@
 
 ### テキスト (hubot)
 
-	robot.respond /(.*)/i, (msg) ->
+	robot.respond /(.*)/, (msg) ->
 		msg.send "Your message is #{msg.match[1]}"
 
 ### スタンプ
@@ -73,7 +73,7 @@
 ### Yes/No スタンプの回答
 
 	robot.respond "yesno", (msg) ->
-		msg.send "Your answer is #{[msg.json.response]}."
+		msg.send "Your answer is #{msg.json.response}."
 
 ### セレクトスタンプの回答
 
@@ -83,9 +83,7 @@
 ### ファイル
 
 	robot.respond "file", (msg) ->
-		msg.send "File received.
-			name: #{msg.json.name}
-			type: #{msg.json.content_type} 
+		msg.send "File received. name: #{msg.json.name} type: #{msg.json.content_type} 
 			size: #{msg.json.content_size}bytes"
 		msg.download msg.json, (path) ->
 			msg.send "downloaded to #{path}"
