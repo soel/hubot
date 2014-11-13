@@ -62,56 +62,48 @@
 
 ### テキスト (hubot)
 
-	robot.respond /^(.*)$/i, (msg) ->
-		# msg.match[1]
+	robot.respond /(.*)/i, (msg) ->
+		msg.send "Your message is #{msg.match[1]}"
 
 ### スタンプ
 
-	robot.respond /^({.*stamp_set.*})$/i, (msg) ->
-		obj = JSON.parse msg.match[1]
-		# obj.stamp_set
-		# obj.stamp_index
+	robot.respond /({.*})/, (msg) ->
+		msg.json "stamp_set", (obj) ->
+			msg.send "#{obj.stamp_set} - #{obj.stamp_index}"
 
 ### Yes/No スタンプの回答
 
-	robot.respond /^({.*in_reply_to.*})$/i, (msg) ->
-		obj = JSON.parse msg.match[1]
-		if obj.in_reply_to == "your_question_msg_id"
-			# obj.response   # true -> Yes, false -> No
+	robot.respond /({.*})/, (msg) ->
+		msg.json "response", (obj) ->
+			unless obj.options?
+				msg.send "Your answer is #{[obj.response]}."
 
 ### セレクトスタンプの回答
 
-	robot.respond /^({.*in_reply_to.*})$/i, (msg) ->
-		obj = JSON.parse msg.match[1]
-		if obj.in_reply_to == "your_question_msg_id"
-			# obj.response   # 選択肢の番号
-
-### 位置情報
-
-	robot.respond /^今ココ：((.|[\n\r])*)\(近辺\)(http://.*)$/, (msg) ->
-		# msg.patch[1] # 住所
-		msg.http("https://www.googleapis.com/urlshortener/v1/url?shortUrl=" + msg.patch[3])
-			.get() (err, res, body) ->
-				json = JSON.parse body
-				loc = json.longUrl.match(/q=([0-9.]+),([0-9.]+)/)
-				# loc[1] # 緯度
-				# loc[2] # 軽度
-		
+	robot.respond /({.*})/, (msg) ->
+		msg.json "response", (obj) ->
+			if obj.options?
+				msg.send "Your answer is #{obj.options[obj.response]}."
 
 ### ファイル
 
-	robot.respond /^({.*file_id.*})$/i, (msg) ->
-		obj = JSON.parse msg.match[1]
-		# obj.file_id
-		# obj.name
-		# obj.content_type  # "image/*" -> 画像, "video/*" -> 動画
-		# obj.content_size
-		# obj.url
-		# obj.thumbnail_url
-		msg.download obj, (path) ->
-			console.log "downloaded to #{path}"
+	robot.respond /({.*})/, (msg) ->
+	    msg.json "file_id", (obj) ->
+			# obj.file_id
+			# obj.name
+			# obj.content_type  # "image/*" -> 画像, "video/*" -> 動画
+			# obj.content_size
+			# obj.url
+			# obj.thumbnail_url
+			msg.download obj, (path) ->
+				msg.send "downloaded to #{path}"
 
-			
+### 位置情報
+
+	robot.respond /^((.|[\n\r])*)$/, (msg) ->
+		msg.map (obj) ->
+			msg.send "Your location is #{obj.place} at #{obj.lat}, #{obj.lng}" # 住所/緯度/経度
+		
 ## トークルーム情報の取得
 
 以下のコードブロックの内側についてのものとします。
