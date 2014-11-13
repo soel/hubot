@@ -3207,7 +3207,7 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 		}
 	}
 	,emit: function(talk,type,user,msg) {
-		if(type != null && talk != null && user != null) this.eventEmitter.emit(type,{ id : albero.Int64Helper.idStr(talk.id), name : talk.name, users : this.userObjects(talk.userIds)},{ id : albero.Int64Helper.idStr(user.id), name : user.displayName, email : user.email, profile_url : user.profileImageUrl},msg);
+		if(type != null && talk != null && user != null) this.eventEmitter.emit(type,{ room : albero.Int64Helper.idStr(talk.id), rooms : this.talksObject()},this.userObject(user),msg);
 	}
 	,dispatch: function(msg) {
 		var _g = this;
@@ -3264,6 +3264,9 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 			}
 		}
 	}
+	,userObject: function(user) {
+		return { id : albero.Int64Helper.idStr(user.id), name : user.displayName, email : user.email, profile_url : user.profileImageUrl};
+	}
 	,userObjects: function(userIds) {
 		var users = [];
 		var _g = 0;
@@ -3272,9 +3275,22 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 			++_g;
 			if(this.dataStore.isCurrentUser(userId)) continue;
 			var user = this.dataStore.getUser(userId);
-			if(user != null) users.push({ id : albero.Int64Helper.idStr(user.id), name : user.displayName, email : user.email, profile_url : user.profileImageUrl});
+			if(user != null) users.push(this.userObject(user));
 		}
 		return users;
+	}
+	,talksObject: function() {
+		var talks = { };
+		var _g = 0;
+		var _g1 = this.dataStore.getTalks();
+		while(_g < _g1.length) {
+			var talk = _g1[_g];
+			++_g;
+			var type;
+			if(talk.type == albero.entity.TalkType.Unknown) type = 0; else if(talk.type == albero.entity.TalkType.PairTalk) type = 1; else type = 2;
+			talks[albero.Int64Helper.idStr(talk.id)] = { id : albero.Int64Helper.idStr(talk.id), name : talk.name, type : type, users : this.userObjects(talk.userIds)};
+		}
+		return talks;
 	}
 	,__class__: albero_cli.mediator.CommandLineMediator
 });

@@ -99,27 +99,29 @@
 
 	module.exports = (robot) ->
 		robot.respond /room/i, (msg) ->
-			user = msg.message.user
-			room = user.rooms[msg.message.room]
 			# here
-
-### トークルーム一覧の取得
-
-	msg.send "Joined talk count is #{Object.keys(user.rooms).length}"
-	# array of joined Talk object
-
-### グループトーク名の取得
-
-	msg.send "Group talk name is #{room.topic}"  # string or undefined
 
 ### トークルームの種類
 
- 	msg.send "This room is " + (room.type == 0 ? "pair" : "group") + " talk."
+ 	msg.send "This room type is " + ["unknown", "pair", "group"][msg.message.roomType]
 
-### トークの参加者情報の取得
+### トークルーム名
+
+	if msg.message.roomType == 2  # Group talk
+		msg.send "Group name is #{msg.message.roomTopic}"
+
+### トークルームの参加者情報
 
 	text = ""
-    text += "#{user.name} #{user.email} #{user.profile_url}\n" for user in room.users
+	for user in msg.message.roomUsers
+	    text += "#{user.name} #{user.email} #{user.profile_url}\n\n" 
+    msg.send text
+
+### トークルームの一覧
+
+	text = ""
+	for id,talk of msg.message.rooms
+	    text += "name:#{talk.topic} type:#{talk.type} users:#{talk.users}\n\n" 
     msg.send text
 
 ## イベント

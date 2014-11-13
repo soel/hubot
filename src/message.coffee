@@ -4,6 +4,12 @@ class Message
   # user - A User instance that sent the message.
   constructor: (@user, @done = false) ->
     @room = @user.room
+    @rooms = @user.rooms
+    
+    r = @rooms[@room]
+    @roomType = r.type
+    @roomTopic = r.topic
+    @roomUsers = r.users
 
   # Indicates that no other Listener should be called on this object
   #
