@@ -134,19 +134,14 @@
 ### ペアトークでのメッセージ受信 (hubot)
 
 	robot.respond /.../, (msg) ->
-		room = msg.message.user.rooms[msg.message.room]
-		msg.send "" if room.type == 0
+		msg.send ""
+
+※ `respond` はグループトーク中の「@hubot名 メッセージ」の場合でも呼ばれます。厳密にペアトークのみに対応させたいときは`if msg.message.roomType == 1` で場合分けしてください。
 
 ### グループトークでのメッセージ受信 (hubot)
  
 	robot.hear /.../, (msg) ->
 		msg.send ""
-
-「@ボット名 メッセージ」の場合
-
-	robot.respond /.../, (msg) ->
-		room = msg.message.user.rooms[msg.message.room]
-		msg.send "" unless room.type == 0
 
 ### トークルームへのユーザーの参加 (hubot)
 
