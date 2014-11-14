@@ -87,7 +87,9 @@ DirectAPI.prototype = {
 			++_g;
 			var val = Reflect.field(obj,fieldName);
 			if(typeof(val) == "string") {
-				if(fieldName == "stamp_index" || fieldName == "in_reply_to") Reflect.setField(obj,fieldName,albero.Int64Helper.parse(val));
+				var id = null;
+				if(fieldName == "stamp_index") id = albero.Int64Helper.parse(val); else if(fieldName == "file_id" || fieldName == "in_reply_to") id = albero.Int64Helper.idStrToInt64(val);
+				if(id != null) obj[fieldName] = id;
 			} else if(Reflect.isObject(obj)) {
 				if(val.high != null && val.low != null) Reflect.setField(obj,fieldName,haxe.Int64.make(val.high,val.low));
 			}
@@ -3249,8 +3251,9 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 					var fieldName = _g21[_g11];
 					++_g11;
 					var val = Reflect.field(obj,fieldName);
-					if(fieldName == "stamp_index" || fieldName == "in_reply_to") {
-						if(Reflect.isObject(obj) && val.high != null && val.low != null) Reflect.setField(obj,fieldName,haxe.Int64.toStr(haxe.Int64.make(val.high,val.low)));
+					if(Reflect.isObject(obj) && val.high != null && val.low != null) {
+						var id = haxe.Int64.make(val.high,val.low);
+						Reflect.setField(obj,fieldName,fieldName == "stamp_index"?id.toString():"_" + id.high + "_" + id.low);
 					}
 				}
 				text = JSON.stringify(obj);
@@ -3400,9 +3403,6 @@ haxe.Int64.compare = function(a,b) {
 haxe.Int64.ucompare = function(a,b) {
 	var v = haxe.Int64.uicompare(a.high,b.high);
 	if(v != 0) return v; else return haxe.Int64.uicompare(a.low,b.low);
-};
-haxe.Int64.toStr = function(a) {
-	return a.toString();
 };
 haxe.Int64.prototype = {
 	toString: function() {
