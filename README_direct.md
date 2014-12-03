@@ -70,15 +70,29 @@
 	robot.respond "stamp", (msg) ->
 		msg.send "#{msg.json.stamp_set} - #{msg.json.stamp_index}"
 
-### Yes/No スタンプの回答
+### Yes/No スタンプ
 
 	robot.respond "yesno", (msg) ->
-		msg.send "Your answer is #{msg.json.response}."
+		if not msg.json.response?
+			msg.send "Your question is #{msg.json.question}."
+		else
+			msg.send "Your answer is #{msg.json.response}."
 
-### セレクトスタンプの回答
+### セレクトスタンプ
 
 	robot.respond "select", (msg) ->
-		msg.send "Your answer is #{msg.json.options[msg.json.response]}."
+		if not msg.json.response?
+			msg.send "Your question is #{msg.json.question}."
+		else
+			msg.send "Your answer is #{msg.json.options[msg.json.response]}."
+
+### タスクスタンプ
+
+	robot.respond "task", (msg) ->
+		if not msg.json.done?
+			msg.send "Your task is #{msg.json.title}."
+		else
+			msg.send "Your task is #{if msg.json.done then 'done' else 'undone'}."
 
 ### ファイル
 

@@ -25,8 +25,9 @@ jsonMatcher = (prop, cb) ->
       false unless obj?
       switch prop
         when "stamp"  then obj.stamp_set? && obj.stamp_index?
-        when "yesno"  then obj.response? && not obj.options?
-        when "select" then obj.response? && obj.options?
+        when "yesno"  then obj.question? && not obj.options?
+        when "select" then obj.question? && obj.options?
+        when "task"   then obj.title?
         when "file"   then obj.file_id?
         else obj[prop]?
     [/({.*})/, (msg) -> cb msg if checker(msg.json = JSON.parse msg.match[1])]
