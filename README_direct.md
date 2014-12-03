@@ -18,7 +18,7 @@
 ### スタンプ
 	
 	msg.send
-		stamp_set: 3
+		stamp_set: "3"
 		stamp_index: "1152921507291203198"
   		text: "おはよう"  # (Option) テキスト付きスタンプの場合のみ
 

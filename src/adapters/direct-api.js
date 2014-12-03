@@ -88,7 +88,7 @@ DirectAPI.prototype = {
 			var val = Reflect.field(obj,fieldName);
 			if(typeof(val) == "string") {
 				var id = null;
-				if(fieldName == "stamp_index") id = albero.Int64Helper.parse(val); else if(fieldName == "file_id" || fieldName == "in_reply_to") id = albero.Int64Helper.idStrToInt64(val);
+				if(fieldName == "stamp_set") id = Std.parseInt(val); else if(fieldName == "stamp_index") id = albero.Int64Helper.parse(val); else if(fieldName == "file_id" || fieldName == "in_reply_to") id = albero.Int64Helper.idStrToInt64(val);
 				if(id != null) obj[fieldName] = id;
 			} else if(Reflect.isObject(obj)) {
 				if(val.high != null && val.low != null) Reflect.setField(obj,fieldName,haxe.Int64.make(val.high,val.low));
@@ -3257,7 +3257,7 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 					if(Reflect.isObject(obj) && val.high != null && val.low != null) {
 						var id = haxe.Int64.make(val.high,val.low);
 						Reflect.setField(obj,fieldName,fieldName == "stamp_index"?id.toString():"_" + id.high + "_" + id.low);
-					}
+					} else if(fieldName == "stamp_set") Reflect.setField(obj,fieldName,Std.string(val));
 				}
 				text = JSON.stringify(obj);
 			}
