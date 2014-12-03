@@ -566,6 +566,7 @@ albero.AppFacade.prototype = $extend(puremvc.patterns.facade.Facade.prototype,{
 		}
 	}
 	,startup: function() {
+		(js.Boot.__cast(this.retrieveProxy("appState") , albero.proxy.AppStateProxy)).start();
 	}
 	,__class__: albero.AppFacade
 });
@@ -1476,7 +1477,7 @@ albero.entity.TalkStatus = function(props) {
 	this.id = props.talk_id;
 	if(props.unread_count != null) this.unreadCount = props.unread_count; else this.unreadCount = 0;
 	this.maxMessageId = props.max_message_id;
-	this.maxMessageCreatedAt = props.max_message_created_at;
+	this.maxMessage = new albero.entity.Message(props.max_message);
 	this.maxReadMessageId = props.max_read_message_id;
 	this.maxEveryoneReadMessageId = props.max_everyone_read_message_id;
 };
@@ -1729,7 +1730,7 @@ albero.proxy.AlberoBroadcastProxy.prototype = $extend(puremvc.patterns.proxy.Pro
 		case "notify_update_talk_status":
 			var statusUpdate = obj;
 			var status2 = this.dataStore.getTalkStatus(statusUpdate.talkId);
-			if(status2 != null && haxe.Int64.compare(status2.maxEveryoneReadMessageId,statusUpdate.maxEveryoneReadMessageId) < 0) {
+			if(status2 != null && (status2.maxEveryoneReadMessageId == null || haxe.Int64.compare(status2.maxEveryoneReadMessageId,statusUpdate.maxEveryoneReadMessageId) < 0)) {
 				status2.maxEveryoneReadMessageId = statusUpdate.maxEveryoneReadMessageId;
 				this.dataStore.setTalkStatus(status2);
 				this.sendNotification("notify_update_local_talk_status",status2);
@@ -1811,7 +1812,7 @@ albero.proxy.AlberoBroadcastProxy.prototype = $extend(puremvc.patterns.proxy.Pro
 		}
 		if(status.maxMessageId == null || haxe.Int64.compare(status.maxMessageId,msg.id) < 0) {
 			status.maxMessageId = msg.id;
-			status.maxMessageCreatedAt = msg.createdAt;
+			status.maxMessage = msg;
 		}
 		if(!this.dataStore.isCurrentUser(msg.userId)) status.unreadCount++;
 		this.dataStore.setTalkStatus(status);
@@ -2115,13 +2116,17 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 		var sendTalkNotifications = function(talks) {
 			talks.sort(function(talk1,talk2) {
 				var status1 = _g.dataStore.getTalkStatus(talk1.id);
-				var update1 = null;
-				if(status1 != null) update1 = status1.maxMessageCreatedAt;
-				if(update1 == null) update1 = talk1.updatedAt;
+				var maxMessage1;
+				if(status1 != null) maxMessage1 = status1.maxMessage; else maxMessage1 = null;
+				var update1;
+				if(maxMessage1 != null) update1 = maxMessage1.createdAt; else update1 = null;
+				if(update1 == null || haxe.Int64.compare(update1,talk1.updatedAt) < 0) update1 = talk1.updatedAt;
 				var status2 = _g.dataStore.getTalkStatus(talk2.id);
-				var update2 = null;
-				if(status2 != null) update2 = status2.maxMessageCreatedAt;
-				if(update2 == null) update2 = talk2.updatedAt;
+				var maxMessage2;
+				if(status2 != null) maxMessage2 = status2.maxMessage; else maxMessage2 = null;
+				var update2;
+				if(maxMessage2 != null) update2 = maxMessage2.createdAt; else update2 = null;
+				if(update2 == null || haxe.Int64.compare(update2,talk2.updatedAt) < 0) update2 = talk2.updatedAt;
 				return haxe.Int64.compare(update1,update2);
 			});
 			var _g1 = 0;
@@ -2488,10 +2493,7 @@ $hxClasses["albero.proxy.AppStateProxy"] = albero.proxy.AppStateProxy;
 albero.proxy.AppStateProxy.__name__ = ["albero","proxy","AppStateProxy"];
 albero.proxy.AppStateProxy.__super__ = puremvc.patterns.proxy.Proxy;
 albero.proxy.AppStateProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.prototype,{
-	onRegister: function() {
-		this.start();
-	}
-	,start: function() {
+	start: function() {
 		this.updateLastActivityAt();
 		this.setupListeners();
 		this.checkInactiveInterval();
@@ -2840,6 +2842,7 @@ albero.proxy.FileServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.p
 albero.proxy.FormatterProxy = function() {
 	puremvc.patterns.proxy.Proxy.call(this,"formatter");
 	albero.proxy._FormatterProxy.ExternalUserIconListener.formatterProxy = this;
+	albero.proxy._FormatterProxy.ExternalUserIconListener.dataStore = this.dataStore;
 };
 $hxClasses["albero.proxy.FormatterProxy"] = albero.proxy.FormatterProxy;
 albero.proxy.FormatterProxy.__name__ = ["albero","proxy","FormatterProxy"];
@@ -2932,7 +2935,7 @@ albero.proxy.MsgPackRpcProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.pr
 	,onClose: function(code,reason,wasClean) {
 		if(console != null) console.info("onClose. code:" + code + ", reason:" + reason + ", wasClean:" + (wasClean == null?"null":"" + wasClean),"","","","");
 		if(code != 1001 || !wasClean) {
-			if(code == 1000 && reason == "concurrent access") this.concurrentAccess = true;
+			if((code == 1000 || code == 1005) && reason == "concurrent access") this.concurrentAccess = true;
 			this.sendNotification("Url",albero.command.UrlAction.FORWARD(albero.Urls.error));
 		}
 		this.finishWebSocket();
@@ -4568,6 +4571,7 @@ albero.proxy.AppStateProxy.NAME = "appState";
 albero.proxy.DataStoreProxy.NAME = "dataStore";
 albero.proxy.FileServiceProxy.__meta__ = { fields : { settings : { inject : null}}};
 albero.proxy.FileServiceProxy.NAME = "fileService";
+albero.proxy.FormatterProxy.__meta__ = { fields : { dataStore : { inject : null}}};
 albero.proxy.FormatterProxy.NAME = "formatter";
 albero.proxy.MsgPackRpcProxy.__meta__ = { fields : { broadcast : { inject : null}}};
 albero.proxy.MsgPackRpcProxy.NAME = "rpc";
