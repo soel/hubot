@@ -3308,7 +3308,7 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 			++_g;
 			var type;
 			if(talk.type == albero.entity.TalkType.Unknown) type = 0; else if(talk.type == albero.entity.TalkType.PairTalk) type = 1; else type = 2;
-			talks[albero.Int64Helper.idStr(talk.id)] = { id : albero.Int64Helper.idStr(talk.id), name : talk.name, type : type, users : this.userObjects(talk.userIds)};
+			talks[albero.Int64Helper.idStr(talk.id)] = { id : albero.Int64Helper.idStr(talk.id), topic : talk.name, type : type, users : this.userObjects(talk.userIds)};
 		}
 		return talks;
 	}
