@@ -28,6 +28,9 @@ class Direct extends Adapter
   reply: (envelope, strings...) ->
     @send envelope, strings.map((str) -> "@#{envelope.user.name} #{str}")...
 
+  topic: (envelope, strings...) ->
+    @bot.topic envelope, strings.join(',')
+
   download: (envelope, remoteFile, callback) ->
     @bot.download envelope, remoteFile, callback
 
@@ -68,6 +71,10 @@ class Direct extends Adapter
    bot.on "JoinMessage",
      withAuthor (envelope, msg) ->
        self.receive new JoinMessage envelope, null, null
+
+   bot.on "TopicChangeMessage",
+     withAuthor (envelope, topic) ->
+       self.receive new TopicMessage envelope, topic, null
 
    bot.listen()
 

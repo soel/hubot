@@ -124,6 +124,10 @@
 	if msg.message.roomType == 2  # Group talk
 		msg.send "Group name is #{msg.message.roomTopic}"
 
+### トークルーム名の変更 (hubot)
+
+	msg.topic "BotGroup"
+
 ### トークルームの参加者情報
 
 	text = ""
@@ -156,6 +160,11 @@
  
 	robot.hear /.../, (msg) ->
 		msg.send ""
+
+### トークルーム名の変更 (hubot)
+
+	robot.topic (msg) ->
+		msg.send "Topic is changed: #{msg.message.text}"
 
 ### トークルームへのユーザーの参加 (hubot)
 
