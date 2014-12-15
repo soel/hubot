@@ -74,7 +74,7 @@ DirectAPI.prototype = {
 		if(this.sendQueue == null) return;
 		var msg1 = this.sendQueue.shift();
 		this.facade.sendNotification("Send",msg1);
-		if(this.sendQueue.length == 0) this.sendQueue = null; else haxe.Timer.delay($bind(this,this.sendMessages),500);
+		if(this.sendQueue.length == 0) this.sendQueue = null; else haxe.Timer.delay($bind(this,this.sendMessages),5000);
 	}
 	,parseContent: function(json) {
 		var obj;
@@ -607,6 +607,16 @@ albero.Int64Helper.eq = function(a,b) {
 albero.Int64Helper.idStrToInt64 = function(str) {
 	var vals = str.split("_");
 	if(vals.length > 2) return haxe.Int64.make(Std.parseInt(vals[1]),Std.parseInt(vals[2])); else return null;
+};
+albero.Int64Helper.contains = function(array,x) {
+	if(array == null) return false;
+	var _g = 0;
+	while(_g < array.length) {
+		var item = array[_g];
+		++_g;
+		if(item != null && x != null && item.high == x.high && item.low == x.low) return true;
+	}
+	return false;
 };
 albero.Int64Helper.remove = function(array,x) {
 	if(array == null) return false;
@@ -3239,6 +3249,11 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 			var subtype = content.type;
 			if(subtype == "add_talkers") {
 				var userIds = content.added_user_ids;
+				var currentUserId = this.dataStore.currentUser.id;
+				if(albero.Int64Helper.contains(userIds,currentUserId)) {
+					emit("JoinMessage",currentUserId);
+					return;
+				}
 				var _g1 = 0;
 				while(_g1 < userIds.length) {
 					var uid = userIds[_g1];
