@@ -22,11 +22,13 @@ class Direct extends Adapter
       else if typeof(string) == 'object'
         @bot.send envelope, JSON.stringify(string)
       else
-        @robot.logger.debug "Sending strings to user: " + envelope.user.name
+        if envelope.user?
+          @robot.logger.debug "Sending strings to user: " + envelope.user.name
         @bot.send envelope, string
 
   reply: (envelope, strings...) ->
-    @send envelope, strings.map((str) -> "@#{envelope.user.name} #{str}")...
+    if envelope.user?
+      @send envelope, strings.map((str) -> "@#{envelope.user.name} #{str}")...
 
   topic: (envelope, strings...) ->
     @bot.topic envelope, strings.join(',')
