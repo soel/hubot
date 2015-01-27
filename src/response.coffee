@@ -39,6 +39,15 @@ class Response
   reply: (strings...) ->
     @robot.adapter.reply @envelope, strings...
 
+  # Public: Posts a message back to the public source
+  #
+  # strings - One or more strings to be posted. The order of these strings
+  #           should be kept intact.
+  #
+  # Returns nothing.
+  announce: (strings...) ->
+    @robot.adapter.announce @envelope, strings...
+
   # Public: Download contents from the URL and save to a file.
   #
   # remoteFile - Strings to be url or Object to be file parameters.

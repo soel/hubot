@@ -30,6 +30,10 @@ class Direct extends Adapter
     if envelope.user?
       @send envelope, strings.map((str) -> "@#{envelope.user.name} #{str}")...
 
+  announce: (envelope, strings...) ->
+    for string in strings
+      @bot.announce envelope, string
+
   topic: (envelope, strings...) ->
     @bot.topic envelope, strings.join(',')
 

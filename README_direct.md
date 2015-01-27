@@ -186,3 +186,9 @@
 ### トークルームからの退出
 
 	msg.leave()
+
+### 一斉連絡の送信
+
+    msg.announce "THIS IS AN ANNOUNCEMENT!"
+
+※ アカウントに管理者権限が必要です。
