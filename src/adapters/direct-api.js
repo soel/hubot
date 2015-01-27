@@ -227,6 +227,14 @@ EReg.prototype = {
 var HxOverrides = function() { };
 $hxClasses["HxOverrides"] = HxOverrides;
 HxOverrides.__name__ = ["HxOverrides"];
+HxOverrides.dateStr = function(date) {
+	var m = date.getMonth() + 1;
+	var d = date.getDate();
+	var h = date.getHours();
+	var mi = date.getMinutes();
+	var s = date.getSeconds();
+	return date.getFullYear() + "-" + (m < 10?"0" + m:"" + m) + "-" + (d < 10?"0" + d:"" + d) + " " + (h < 10?"0" + h:"" + h) + ":" + (mi < 10?"0" + mi:"" + mi) + ":" + (s < 10?"0" + s:"" + s);
+};
 HxOverrides.cca = function(s,index) {
 	var x = s.charCodeAt(index);
 	if(x != x) return undefined;
@@ -1558,6 +1566,14 @@ albero.entity.User.prototype = {
 var AlberoLog = $hx_exports.AlberoLog = function() { };
 $hxClasses["AlberoLog"] = AlberoLog;
 AlberoLog.__name__ = ["AlberoLog"];
+AlberoLog.dateStr = function() {
+	return "[" + (function($this) {
+		var $r;
+		var _this = new Date();
+		$r = HxOverrides.dateStr(_this);
+		return $r;
+	}(this)) + "] ";
+};
 albero.js = {};
 albero.js.WebSocket = function(url) {
 	var _g = this;
@@ -1577,7 +1593,7 @@ $hxClasses["albero.js.WebSocket"] = albero.js.WebSocket;
 albero.js.WebSocket.__name__ = ["albero","js","WebSocket"];
 albero.js.WebSocket.prototype = {
 	onOpen: function(event) {
-		if(console != null) console.info("WebSocket opened.","","","","");
+		if(console != null) console.info(AlberoLog.dateStr() + "WebSocket opened.","","","","");
 		if(this.onopen != null) this.onopen();
 	}
 	,onMessage: function(event) {
@@ -1589,13 +1605,13 @@ albero.js.WebSocket.prototype = {
 		}
 	}
 	,onError: function(event) {
-		if(console != null) console.error("WebSocket error. event:",event,"","","");
+		if(console != null) console.error(AlberoLog.dateStr() + "WebSocket error. event:",event,"","","");
 		if(this.onerror != null) this.onerror();
 	}
 	,onClose: function(event) {
 		this.ws = null;
 		this.connection = null;
-		if(console != null) console.info("WebSocket closed. event:%s reason:%s wasClean:%s",event.code,event.reason,event.wasClean,"");
+		if(console != null) console.info(AlberoLog.dateStr() + "WebSocket closed. event:%s reason:%s wasClean:%s",event.code,event.reason,event.wasClean,"");
 		if(this.onclose != null) this.onclose(event.code,event.reason,event.wasClean);
 	}
 	,close: function() {
@@ -1758,7 +1774,7 @@ albero.proxy.AlberoBroadcastProxy.prototype = $extend(puremvc.patterns.proxy.Pro
 			var status1 = obj;
 			var currentStatus = this.dataStore.getAnnouncementStatus(status1.domainId);
 			if(currentStatus == null) this.dataStore.setAnnouncementStatus(status1); else if(currentStatus.maxReadAnnouncementId == null || haxe.Int64.compare(currentStatus.maxReadAnnouncementId,status1.maxReadAnnouncementId) < 0) this.dataStore.setAnnouncementStatus(status1); else {
-				if(AlberoLog.DEBUG && console != null) console.log("notified announcement status is older than current status. notified:%o, current:%o",status1,currentStatus,"","");
+				if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr() + "notified announcement status is older than current status. notified:%o, current:%o",status1,currentStatus,"","");
 				status1.maxReadAnnouncementId = currentStatus.maxReadAnnouncementId;
 				status1.maxAnnouncementId = currentStatus.maxAnnouncementId;
 				status1.unreadCount = currentStatus.unreadCount;
@@ -1803,7 +1819,7 @@ albero.proxy.AlberoBroadcastProxy.prototype = $extend(puremvc.patterns.proxy.Pro
 			if((obj instanceof Array) && obj.__enum__ == null) obj[1] = this.newUser(obj[1]); else {
 				var user = this.newUser(obj);
 				if(albero.Int64Helper.eq(user.id,this.dataStore.currentUser.id)) {
-					if(AlberoLog.DEBUG && console != null) console.log("Current user updated. user:",user,"","","");
+					if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr() + "Current user updated. user:",user,"","","");
 					this.dataStore.setCurrentUser(user);
 				}
 				obj = [this.settings.getSelectedDomainId(),user];
@@ -1840,7 +1856,7 @@ albero.proxy.AlberoBroadcastProxy.prototype = $extend(puremvc.patterns.proxy.Pro
 			obj = new albero.entity.AnnouncementStatus(obj);
 			break;
 		default:
-			if(console != null) console.warn("Unknown method. name:",name," obj:",obj,"");
+			if(console != null) console.warn(AlberoLog.dateStr() + "Unknown method. name:",name," obj:",obj,"");
 		}
 		return obj;
 	}
@@ -2932,14 +2948,14 @@ albero.proxy.MsgPackRpcProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.pr
 			var result = data1[3];
 			var responseHandler = this.responseHandlers.get(msgId);
 			if(responseHandler == null) {
-				if(console != null) console.error("No ResponseHandler prepared. msgId:%s error:%s result:",msgId,error,result,"");
+				if(console != null) console.error(AlberoLog.dateStr() + "No ResponseHandler prepared. msgId:%s error:%s result:",msgId,error,result,"");
 				return;
 			}
 			if(error == null) {
 				var func = responseHandler.onSuccess;
 				if(func != null) func(result);
 			} else {
-				if(console != null) console.error("Receive Error Response. method:",responseHandler.method," error:",error,"");
+				if(console != null) console.error(AlberoLog.dateStr() + "Receive Error Response. method:",responseHandler.method," error:",error,"");
 				var func1 = responseHandler.onError;
 				if(func1 != null) func1(error); else if(this.errorHandler != null) this.errorHandler(responseHandler.method,error);
 			}
@@ -2962,7 +2978,7 @@ albero.proxy.MsgPackRpcProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.pr
 		}
 	}
 	,onClose: function(code,reason,wasClean) {
-		if(console != null) console.info("onClose. code:" + code + ", reason:" + reason + ", wasClean:" + (wasClean == null?"null":"" + wasClean),"","","","");
+		if(console != null) console.info(AlberoLog.dateStr() + Std.string("onClose. code:" + code + ", reason:" + reason + ", wasClean:" + (wasClean == null?"null":"" + wasClean)),"","","","");
 		if(code != 1001 || !wasClean) {
 			if((code == 1000 || code == 1005) && reason == "concurrent access") this.connectionStatus = albero.ConnectionStatus.ConcurrentAccessError; else if((code == 1000 || code == 1005) && reason == "forcibly closed") this.connectionStatus = albero.ConnectionStatus.ForcibliyClosedError; else this.connectionStatus = albero.ConnectionStatus.Error;
 			if(this.connectionStatus == albero.ConnectionStatus.ForcibliyClosedError) this.sendNotification("SignOut"); else this.sendNotification("Url",albero.command.UrlAction.FORWARD(albero.Urls.error));
@@ -2984,7 +3000,7 @@ albero.proxy.MsgPackRpcProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.pr
 	}
 	,call: function(method,args,onSuccess,onError) {
 		if(this.ws == null) {
-			if(console != null) console.error("disconnected. data:",this.data,"","","");
+			if(console != null) console.error(AlberoLog.dateStr() + "disconnected. data:",this.data,"","","");
 			return;
 		}
 		if(args == null) args = [];
@@ -3162,7 +3178,7 @@ albero.proxy.SettingsProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.prot
 		this.selectedDomainId = null;
 	}
 	,setSelectedTalk: function(talk) {
-		if(AlberoLog.DEBUG && console != null) console.log("talk selected. talk:",talk,"","","");
+		if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr() + "talk selected. talk:",talk,"","","");
 		if(this.selectedTalkIds == null) this.selectedTalkIds = new haxe.ds.StringMap();
 		if(talk == null) {
 			if(this.selectedDomainId != null) {
@@ -3179,7 +3195,7 @@ albero.proxy.SettingsProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.prot
 	}
 	,set: function(key,val) {
 		if(key == "access_token") {
-			if(console != null) console.info(val,"","","","");
+			if(console != null) console.info(AlberoLog.dateStr() + (val == null?"null":"" + val),"","","","");
 			js.Node.process.exit(0);
 			return;
 		}
