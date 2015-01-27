@@ -68,6 +68,7 @@ class Robot
       @invokeErrorHandlers(err, msg)
     process.on 'uncaughtException', (err) =>
       @emit 'error', err
+      process.exit(1)
 
   # Public: Adds a Listener that attempts to match incoming messages based on
   # a Regex.
