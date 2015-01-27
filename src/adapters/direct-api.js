@@ -29,6 +29,31 @@ DirectAPI.prototype = {
 			Settings.accessToken = options.access_token;
 		} else throw new Error("Not enough parameters provided. I need a access token");
 	}
+	,announce: function(envelope,text) {
+		var roomId = envelope.room;
+		var talkId = albero.Int64Helper.idStrToInt64(roomId);
+		if(talkId == null || text == null || text.length == 0) return;
+		var dataStore;
+		dataStore = js.Boot.__cast(this.facade.retrieveProxy("dataStore") , albero.proxy.DataStoreProxy);
+		var talk = dataStore.getTalk(talkId);
+		if(talk == null) return;
+		var settings;
+		settings = js.Boot.__cast(this.facade.retrieveProxy("settings") , albero.proxy.SettingsProxy);
+		settings.setSelectedDomainId(talk.domainId);
+		var msgs = new Array();
+		var _g = 0;
+		var _g1 = TextHelper.slice(text,1024);
+		while(_g < _g1.length) {
+			var text1 = _g1[_g];
+			++_g;
+			var msg = new albero.entity.Message();
+			msg.talkId = null;
+			msg.type = albero.entity.MessageType.text;
+			msg.content = text1;
+			msgs.push(msg);
+		}
+		this.sendMessages(msgs);
+	}
 	,send: function(envelope,text) {
 		var roomId = envelope.room;
 		var talkId = albero.Int64Helper.idStrToInt64(roomId);
@@ -193,6 +218,9 @@ EReg.prototype = {
 		this.r.m = this.r.exec(s);
 		this.r.s = s;
 		return this.r.m != null;
+	}
+	,matched: function(n) {
+		if(this.r.m != null && n >= 0 && n < this.r.m.length) return this.r.m[n]; else throw "EReg::matched";
 	}
 	,__class__: EReg
 };
@@ -601,6 +629,11 @@ albero.Int64Helper.parse = function(str) {
 albero.Int64Helper.idStr = function(id) {
 	return "_" + id.high + "_" + id.low;
 };
+albero.Int64Helper.makeFromIdStr = function(idStr) {
+	var r = new EReg("^_(-?\\d*)_(-?\\d*)$","");
+	if(!r.match(idStr)) return null;
+	return haxe.Int64.make(Std.parseInt(r.matched(1)),Std.parseInt(r.matched(2)));
+};
 albero.Int64Helper.eq = function(a,b) {
 	return a != null && b != null && a.high == b.high && a.low == b.low;
 };
@@ -996,7 +1029,7 @@ albero.command.SendCommand.__super__ = albero.command.AutoBindCommand;
 albero.command.SendCommand.prototype = $extend(albero.command.AutoBindCommand.prototype,{
 	execute: function(notification) {
 		var body = notification.getBody();
-		this.api.createMessage(body.talkId,body.type,body.content);
+		if(body.talkId != null) this.api.createMessage(body.talkId,body.type,body.content); else this.api.createAnnouncement(body.type,body.content);
 	}
 	,__class__: albero.command.SendCommand
 });
@@ -2075,6 +2108,19 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 			_g1.sendNotification("get_users_responsed",[domainId,result.marker,result.next_marker,users,query]);
 		});
 	}
+	,getUserEmails: function(domainId,userIds,callback) {
+		var _g2 = this;
+		this.rpc.call("get_user_emails",[domainId,userIds],function(result) {
+			var _g1 = 0;
+			var _g = userIds.length;
+			while(_g1 < _g) {
+				var i = _g1++;
+				var user = _g2.dataStore.getUser(userIds[i]);
+				if(user != null) user.email = result[i];
+			}
+			if(callback != null) callback();
+		});
+	}
 	,getDomains: function(callback) {
 		var _g1 = this;
 		var sendDomainNotifications = function(domains) {
@@ -2371,6 +2417,14 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 			_g1.sendNotification("get_file_responsed",{ talkId : talk.id, files : files});
 		});
 	}
+	,createAnnouncement: function(type,content) {
+		var _g = this;
+		var domainId = this.settings.getSelectedDomainId();
+		if(domainId == null) return;
+		this.rpc.call("create_announcement",[domainId,albero.entity.Message.enumIndex(type),content],function(message) {
+			_g.sendNotification("notify_create_announcement",_g.newAnnouncement(message));
+		});
+	}
 	,getAnnouncements: function(range,callback) {
 		var _g = this;
 		var count = 20;
@@ -2486,6 +2540,9 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 	}
 	,newFileInfo: function(obj) {
 		return new albero.entity.FileInfo(obj);
+	}
+	,newAnnouncement: function(obj) {
+		return new albero.entity.Announcement(obj);
 	}
 	,newAnnouncementStatus: function(obj) {
 		return this.dataStore.setAnnouncementStatus(new albero.entity.AnnouncementStatus(obj));
@@ -2611,6 +2668,9 @@ albero.proxy.DataStoreProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.pro
 		return userIds.map(function(id) {
 			return _g.getUser(id);
 		});
+	}
+	,getUsermap: function() {
+		return this.users;
 	}
 	,getTalk: function(id) {
 		return this.talks.get("_" + id.high + "_" + id.low);
@@ -3236,7 +3296,10 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 		}
 	}
 	,emit: function(talk,type,user,msg) {
-		if(type != null && talk != null && user != null) this.eventEmitter.emit(type,{ room : albero.Int64Helper.idStr(talk.id), rooms : this.talksObject()},this.userObject(user),msg);
+		var _g = this;
+		if(type != null && talk != null && user != null) this.setEmailOfAllUsers(function() {
+			_g.eventEmitter.emit(type,{ room : albero.Int64Helper.idStr(talk.id), rooms : _g.talksObject()},_g.userObject(user),msg);
+		});
 	}
 	,dispatch: function(msg) {
 		var _g = this;
@@ -3326,6 +3389,60 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 			talks[albero.Int64Helper.idStr(talk.id)] = { id : albero.Int64Helper.idStr(talk.id), topic : talk.name, type : type, users : this.userObjects(talk.userIds)};
 		}
 		return talks;
+	}
+	,setEmailOfAllUsers: function(callback) {
+		var _g = this;
+		var userIds = null;
+		var findDomainId = function(userId) {
+			var _g1 = 0;
+			var _g2 = _g.dataStore.getTalks();
+			while(_g1 < _g2.length) {
+				var talk = _g2[_g1];
+				++_g1;
+				var _g3 = 0;
+				var _g4 = talk.userIds;
+				while(_g3 < _g4.length) {
+					var uid = _g4[_g3];
+					++_g3;
+					if(uid != null && userId != null && uid.high == userId.high && uid.low == userId.low) return albero.Int64Helper.idStr(talk.domainId);
+				}
+			}
+			return null;
+		};
+		var $it0 = (function($this) {
+			var $r;
+			var this1 = $this.dataStore.getUsermap();
+			$r = this1.iterator();
+			return $r;
+		}(this));
+		while( $it0.hasNext() ) {
+			var user = $it0.next();
+			if(user.email == null) {
+				var domainIdStr = findDomainId(user.id);
+				if(domainIdStr != null) {
+					if(userIds == null) userIds = new haxe.ds.StringMap();
+					var ids = userIds.get(domainIdStr);
+					if(ids == null) {
+						ids = new Array();
+						userIds.set(domainIdStr,ids);
+					}
+					ids.push(user.id);
+				}
+			}
+		}
+		if(userIds == null) callback(); else {
+			var api;
+			api = js.Boot.__cast(this.facade.retrieveProxy("api") , albero.proxy.AlberoServiceProxy);
+			var it = userIds.keys();
+			var success = null;
+			success = function() {
+				if(it.hasNext()) {
+					var domainIdStr1 = it.next();
+					api.getUserEmails(albero.Int64Helper.makeFromIdStr(domainIdStr1),userIds.get(domainIdStr1),success);
+				} else callback();
+			};
+			success();
+		}
 	}
 	,__class__: albero_cli.mediator.CommandLineMediator
 });
@@ -3512,6 +3629,14 @@ haxe.ds.IntMap.prototype = {
 		}
 		return HxOverrides.iter(a);
 	}
+	,iterator: function() {
+		return { ref : this.h, it : this.keys(), hasNext : function() {
+			return this.it.hasNext();
+		}, next : function() {
+			var i = this.it.next();
+			return this.ref[i];
+		}};
+	}
 	,__class__: haxe.ds.IntMap
 };
 haxe.ds.ObjectMap = function() {
@@ -3539,6 +3664,21 @@ haxe.ds.ObjectMap.prototype = {
 		delete(this.h[id]);
 		delete(this.h.__keys__[id]);
 		return true;
+	}
+	,keys: function() {
+		var a = [];
+		for( var key in this.h.__keys__ ) {
+		if(this.h.hasOwnProperty(key)) a.push(this.h.__keys__[key]);
+		}
+		return HxOverrides.iter(a);
+	}
+	,iterator: function() {
+		return { ref : this.h, it : this.keys(), hasNext : function() {
+			return this.it.hasNext();
+		}, next : function() {
+			var i = this.it.next();
+			return this.ref[i.__id__];
+		}};
 	}
 	,__class__: haxe.ds.ObjectMap
 };
