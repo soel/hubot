@@ -253,6 +253,22 @@ For those times that there isn't an API, there's always the possibility of scree
 * [cheerio](https://github.com/MatthewMueller/cheerio) (familiar syntax and API to jQuery)
 * [jsdom](https://github.com/tmpvar/jsdom) (JavaScript implementation of the W3C DOM)
 
+
+### Advanced HTTP and HTTPS settings
+
+As mentioned, hubot uses [node-scoped-http-client](https://github.com/technoweenie/node-scoped-http-client) to provide a simple interface for making HTTP and HTTP requests. Under its hood, it's using node's builtin [http](http://nodejs.org/api/http.html) and [https](http://nodejs.org/api/https.html) libraries, but providing an easy DSL for the most common kinds of interaction.
+
+If you need to control options on http and https more directly, you pass a second argument to `robot.http` that will be passed on to node-scoped-http-client which will be passed on to http and https:
+
+```
+  options =
+    # don't verify server certificate against a CA, SCARY!
+    rejectUnauthorized: false
+  robot.http("https://midnight-train", options)
+```
+
+In addition, if node-scoped-http-client doesn't suit you, you can can use [http](http://nodejs.org/api/http.html) and [https](http://nodejs.org/api/https.html) yourself directly, or any other node library like [request](https://github.com/request/request).
+
 ## Random
 
 A common pattern is to hear or respond to commands, and send with a random funny image or line of text from an array of possibilities. It's annoying to do this in JavaScript and CoffeeScript out of the box, so Hubot includes a convenience method:
@@ -585,16 +601,11 @@ will use to load the scripts in your package. Below is a simple example for
 loading each script in a `./scripts` directory in your package.
 
 ```coffeescript
-Fs   = require 'fs'
 Path = require 'path'
 
 module.exports = (robot) ->
   path = Path.resolve __dirname, 'scripts'
-  Fs.exists path, (exists) ->
-    if exists
-      for file in Fs.readdirSync(path)
-        robot.loadFile path, file
-        robot.parseHelp Path.join(path, file)
+  robot.load path
 ```
 
 After you've built your `npm` package you can publish it to [npmjs](http://npmjs.org).

@@ -102,7 +102,7 @@ class Response
   # send the request.
   #
   # Returns a ScopedClient instance.
-  http: (url) ->
-    @robot.http(url)
+  http: (url, options) ->
+    @robot.http(url, options)
 
 module.exports = Response

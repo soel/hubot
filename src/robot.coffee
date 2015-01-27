@@ -232,8 +232,14 @@ class Robot
     full = Path.join path, Path.basename(file, ext)
     if require.extensions[ext]
       try
-        require(full) @
-        @parseHelp Path.join(path, file)
+        script = require(full)
+
+        if typeof script is 'function'
+          script @
+          @parseHelp Path.join(path, file)
+        else
+          @logger.warning "Expected #{full} to assign a function to module.exports, got #{typeof script}"
+
       catch error
         @logger.error "Unable to load #{full}: #{error.stack}"
         process.exit(1)
@@ -475,10 +481,11 @@ class Robot
   # send the request.
   #
   # url - String URL to access.
+  # options - Optional options to pass on to the client
   #
   # Examples:
   #
-  #     res.http("http://example.com")
+  #     robot.http("http://example.com")
   #       # set a single header
   #       .header('Authorization', 'bearer abcdef')
   #
@@ -496,9 +503,12 @@ class Robot
   #       .post(data) (err, res, body) ->
   #         console.log body
   #
+  #    # Can also set options
+  #    robot.http("https://example.com", {rejectUnauthorized: false})
+  #
   # Returns a ScopedClient instance.
-  http: (url) ->
-    HttpClient.create(url)
+  http: (url, options) ->
+    HttpClient.create(url, options)
       .header('User-Agent', "Hubot/#{@version}")
 
 module.exports = Robot
