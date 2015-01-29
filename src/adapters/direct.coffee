@@ -43,6 +43,12 @@ class Direct extends Adapter
   leave: (envelope) ->
     @bot.leave envelope
  
+  users: ->
+    @bot.userObjects()
+
+  talks: ->
+    @bot.talkObjects()
+
   run: ->
    self = @
 

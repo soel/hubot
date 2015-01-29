@@ -9,7 +9,11 @@ class Brain extends EventEmitter
   constructor: (robot) ->
     @data =
       users:    { }
+      talks:    { }
       _private: { }
+
+    @getUsers = robot.adapter.users
+    @getTalks = robot.adapter.talks
 
     @autoSave = true
 
@@ -95,20 +99,22 @@ class Brain extends EventEmitter
   #
   # Returns an Array of User objects.
   users: ->
+    if getUsers? then @data.users = @getUsers()
     @data.users
 
   # Public: Get a User object given a unique identifier.
   #
   # Returns a User instance of the specified user.
   userForId: (id, options) ->
-    user = @data.users[id]
+    users = @users()
+    user = users[id]
     unless user
       user = new User id, options
-      @data.users[id] = user
+      users[id] = user
 
     if options and options.room and (!user.room or user.room isnt options.room)
       user = new User id, options
-      @data.users[id] = user
+      users[id] = user
 
     user
 
@@ -118,10 +124,11 @@ class Brain extends EventEmitter
   userForName: (name) ->
     result = null
     lowerName = name.toLowerCase()
-    for k of (@data.users or { })
-      userName = @data.users[k]['name']
+    users = @users()
+    for k of (users or { })
+      userName = users[k]['name']
       if userName? and userName.toString().toLowerCase() is lowerName
-        result = @data.users[k]
+        result = users[k]
     result
 
   # Public: Get all users whose names match fuzzyName. Currently, match
@@ -131,7 +138,7 @@ class Brain extends EventEmitter
   # Returns an Array of User instances matching the fuzzy name.
   usersForRawFuzzyName: (fuzzyName) ->
     lowerFuzzyName = fuzzyName.toLowerCase()
-    user for key, user of (@data.users or {}) when (
+    user for key, user of (@users() or {}) when (
       user.name.toLowerCase().lastIndexOf(lowerFuzzyName, 0) is 0
     )
 
@@ -147,6 +154,14 @@ class Brain extends EventEmitter
       return [user] if user.name.toLowerCase() is lowerFuzzyName
 
     matchedUsers
+
+  # Public: Get an Array of Talk objects stored in the brain.
+  #
+  # Returns an Array of Talk objects.
+  talks: ->
+    if getTalks? then @data.talks = @getTalks()
+    @data.talks
+
 
 # Private: Extend obj with objects passed as additional args.
 #
