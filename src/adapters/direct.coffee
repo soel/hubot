@@ -82,6 +82,9 @@ class Direct extends Adapter
      withAuthor (envelope, topic) ->
        self.receive new TopicMessage envelope, topic, null
 
+   bot.on "error_occurred", (err, msg) ->
+     self.robot.emit "error", err, msg
+
    bot.listen()
 
    @bot = bot
