@@ -158,7 +158,7 @@ class Brain extends EventEmitter
   # Public: Get an Array of Talk objects stored in the brain.
   #
   # Returns an Array of Talk objects.
-  talks: ->
+  rooms: ->
     if getTalks? then @data.talks = @getTalks()
     @data.talks
 
