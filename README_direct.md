@@ -15,6 +15,11 @@
 
 	msg.send "This message is text."
 
+もしくは、以下も同等です。
+
+	msg.send
+		text: "This message is text."
+
 ### スタンプ
 	
 	msg.send
@@ -142,6 +147,33 @@
 	    text += "name:#{talk.topic} type:#{talk.type} users:#{talk.users}\n\n" 
     msg.send text
 
+※ msg オブジェクトが利用できない場合は、`msg.message.rooms` の代わりに `robot.brain.rooms` も利用できます。
+
+
+## 連絡先情報の取得
+
+以下のコードブロックの内側についてのものとします。
+
+	module.exports = (robot) ->
+		robot.respond /users/i, () ->
+			# here
+
+### 連絡先の一覧 (hubot)
+	
+	console.log robot.brain.users()
+
+### IDによる連絡先の検索 (hubot)
+
+	user = robot.brain.users()[0]
+	console.log robot.brain.userForId(user.id)
+
+### 名前による連絡先の検索 (hubot)
+
+	user = robot.brain.users()[0]
+	console.log robot.brain.userForName(user.name)
+
+※ その他にも、`usersForRawFuzzyName` (先頭一致)、`usersForFuzzyName` (先頭一致、ただし、完全一致を優先) も利用できます。
+
 ## イベント
 
 以下のコードブロックの内側についてのものとします。
@@ -180,6 +212,29 @@
 
 	robot.join (msg) ->
 		msg.send "Nice to meet you!"
+
+### メッセージの未読・既読
+
+	robot.respond /read after/, (msg) ->
+		msg.send
+			text: "Read thie message, please!"
+			onsend: ->
+				setTimeout ->
+					text = []
+					text.push "#{user.name} read after 10sec." for user in this.readUsers
+					text.push "#{user.name} did't read after 10sec." for user in this.unreadUsers
+					msg.send text.join("\n")
+				, 10000
+
+リアルタイムに未読・既読を知りたい場合は、以下のようにします。
+
+	robot.respond /read now/, (msg) ->
+		msg.send
+			text: "Read thie message, please!"
+			onread: (readNowUsers, readUsers, unreadUsers) ->
+				text = []
+				text.push "#{user.name} read now." for user in readNowUsers
+				msg.send text.join("\n")
 
 ## その他
 
