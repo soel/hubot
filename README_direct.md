@@ -219,13 +219,13 @@
 	robot.respond /read after/, (msg) ->
 		msg.send
 			text: "Read thie message, please!"
-			onsend: ->
+			onsend: (sent) ->
 				setTimeout ->
 					text = []
-					text.push "#{user.name} read after 10sec." for user in this.readUsers
-					text.push "#{user.name} did't read after 10sec." for user in this.unreadUsers
+					text.push "#{user.name} read after 5sec." for user in sent.readUsers
+					text.push "#{user.name} did't read after 5sec." for user in sent.unreadUsers
 					msg.send text.join("\n")
-				, 10000
+				, 5000
 
 リアルタイムに未読・既読を知りたい場合は、以下のようにします。
 
