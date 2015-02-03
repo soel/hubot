@@ -6,14 +6,11 @@ class Brain extends EventEmitter
   # Represents somewhat persistent storage for the robot. Extend this.
   #
   # Returns a new Brain with no external storage.
-  constructor: (robot) ->
+  constructor: (@robot) ->
     @data =
       users:    { }
       talks:    { }
       _private: { }
-
-    @getUsers = -> robot.adapter.users
-    @getTalks = -> robot.adapter.talks
 
     @autoSave = true
 
@@ -99,8 +96,8 @@ class Brain extends EventEmitter
   #
   # Returns an Array of User objects.
   users: ->
-    getUsers = @getUsers()
-    if getUsers? then @data.users = getUsers()
+    adapter = @robot.adapter
+    if adapter.users? then @data.users = adapter.users()
     @data.users
 
   # Public: Get a User object given a unique identifier.
@@ -160,8 +157,8 @@ class Brain extends EventEmitter
   #
   # Returns an Array of Talk objects.
   rooms: ->
-    getTalks = @getTalks()
-    if getTalks? then @data.talks = getTalks()
+    adapter = @robot.adapter
+    if adapter.talks? then @data.talks = adapter.talks()
     @data.talks
 
 

@@ -147,7 +147,7 @@
 	    text += "name:#{talk.topic} type:#{talk.type} users:#{talk.users}\n\n" 
     msg.send text
 
-※ msg オブジェクトが利用できない場合は、`msg.message.rooms` の代わりに `robot.brain.rooms` も利用できます。
+※ msg オブジェクトが利用できない場合は、`msg.message.rooms` の代わりに `robot.brain.rooms()` も利用できます (注：関数呼出しになります)。
 
 
 ## 連絡先情報の取得
@@ -160,16 +160,17 @@
 
 ### 連絡先の一覧 (hubot)
 	
-	console.log robot.brain.users()
+	users = robot.brain.users()
+	console.log users   # { id0:user0, id1:user1, ... }
 
 ### IDによる連絡先の検索 (hubot)
 
-	user = robot.brain.users()[0]
-	console.log robot.brain.userForId(user.id)
+	userId = Object.keys(users)[0]
+	console.log robot.brain.userForId(userId)
 
 ### 名前による連絡先の検索 (hubot)
 
-	user = robot.brain.users()[0]
+	user = users[userId]
 	console.log robot.brain.userForName(user.name)
 
 ※ その他にも、`usersForRawFuzzyName` (先頭一致)、`usersForFuzzyName` (先頭一致、ただし、完全一致を優先) も利用できます。
