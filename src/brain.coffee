@@ -12,8 +12,8 @@ class Brain extends EventEmitter
       talks:    { }
       _private: { }
 
-    @getUsers = robot.adapter.users
-    @getTalks = robot.adapter.talks
+    @getUsers = -> robot.adapter.users
+    @getTalks = -> robot.adapter.talks
 
     @autoSave = true
 
@@ -99,7 +99,8 @@ class Brain extends EventEmitter
   #
   # Returns an Array of User objects.
   users: ->
-    if getUsers? then @data.users = @getUsers()
+    getUsers = @getUsers()
+    if getUsers? then @data.users = getUsers()
     @data.users
 
   # Public: Get a User object given a unique identifier.
@@ -159,7 +160,8 @@ class Brain extends EventEmitter
   #
   # Returns an Array of Talk objects.
   rooms: ->
-    if getTalks? then @data.talks = @getTalks()
+    getTalks = @getTalks()
+    if getTalks? then @data.talks = getTalks()
     @data.talks
 
 
