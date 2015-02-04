@@ -271,6 +271,9 @@ Std.parseInt = function(x) {
 	if(isNaN(v)) return null;
 	return v;
 };
+Std.parseFloat = function(x) {
+	return parseFloat(x);
+};
 var StringTools = function() { };
 $hxClasses["StringTools"] = StringTools;
 StringTools.__name__ = ["StringTools"];
@@ -1920,6 +1923,17 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 			_g.settings.setConfiguration(new albero.entity.Configuration(map.configuration));
 			var callback = function() {
 				_g.dataRecoverd = true;
+				var expired = map.configuration.bot_expired_version;
+				if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr() + "bot_expired_version",expired,"","","");
+				if(expired != null) {
+					var current = js.Node.require("../../package.json").version;
+					if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr() + "current",current,"","","");
+					if(current != null) {
+						var abc = expired.split(".");
+						var xyz = current.split(".");
+						if(abc.length == 3 && xyz.length == 3 && (Std.parseFloat(abc[0]) - Std.parseFloat(xyz[0])) * 10000 + (Std.parseFloat(abc[1]) - Std.parseFloat(xyz[1])) * 100 + (Std.parseFloat(abc[2]) - Std.parseFloat(xyz[2])) >= 0) js.Node.process.stderr.write("-----------------------------------------\n" + "Current version is expired! (current: " + current + ")\n" + "Run 'npm update hubot' to update\n" + "-----------------------------------------\n");
+					}
+				}
 				_g.sendNotification("data_recovered");
 				_g.rpc.call("start_notification",[],function(data) {
 					var succeed = data;
