@@ -4,17 +4,35 @@
 
 _map = (msg, callback) ->
   text = msg.match[1].replace(/[\n\r]/g, " ")
-  m = text.match(/^今ココ[:：] (.*) \(近辺\) (http:\/\/.*)$/)
+  m = text.match(/^今ココ[:：] (.*) (http:\/\/.*)$/)
   if m?
-    msg.http("https://www.googleapis.com/urlshortener/v1/url?shortUrl=" + m[2])
-      .get() (err, res, body) ->
-        json = JSON.parse body
-        loc = json.longUrl.match(/q=([0-9.]+),([0-9.]+)/)
-        msg.json =
-          place:m[1]
-          lat:loc[1]
-          lng:loc[2]
-        callback msg
+    place = m[1].replace(/\ \(近辺\)$/, "").replace(/^緯度 [:：].*$/, "")
+    url = m[2]
+
+    cb = (url) ->
+      loc = url.match(/q=([0-9.]+),([0-9.]+)/) or [0, 0]
+      msg.json =
+        place:place
+        lat:loc[1]
+        lng:loc[2]
+      callback msg
+
+    if url.indexOf("goo.gl") == -1
+      cb url
+    else
+      msg.http("https://www.googleapis.com/urlshortener/v1/url?shortUrl=" + url)
+        .get() (err, res, body) ->
+          if err?
+            console.log err
+          else
+            try
+              json = JSON.parse body
+              if json.longUrl?
+                cb json.longUrl
+              else
+                console.log json
+            catch ex
+              console.log ex
 
 # public:
 jsonMatcher = (prop, cb) ->
