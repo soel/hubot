@@ -1958,7 +1958,7 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 			var callbackIfAllFunctionFinished = function() {
 				completeCount++;
 				if(completeCount < 6) return;
-				callback();
+				_g.getAllUserEmails(callback);
 			};
 			_g.getDomains(function() {
 				var domains = _g.dataStore.getDomains();
@@ -2104,6 +2104,52 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 			}
 			if(callback != null) callback();
 		});
+	}
+	,getAllUserEmails: function(callback) {
+		var _g = this;
+		var userIds = null;
+		var findDomainId = function(userId) {
+			var _g1 = 0;
+			var _g2 = _g.dataStore.getDomains();
+			while(_g1 < _g2.length) {
+				var domain = _g2[_g1];
+				++_g1;
+				if(_g.dataStore.isFriendOrAcquaintance(domain.id,userId)) return albero.Int64Helper.idStr(domain.id);
+			}
+			return null;
+		};
+		var $it0 = (function($this) {
+			var $r;
+			var this1 = $this.dataStore.getUsermap();
+			$r = this1.iterator();
+			return $r;
+		}(this));
+		while( $it0.hasNext() ) {
+			var user = $it0.next();
+			if(user.email == null) {
+				var domainIdStr = findDomainId(user.id);
+				if(domainIdStr != null) {
+					if(userIds == null) userIds = new haxe.ds.StringMap();
+					var ids = userIds.get(domainIdStr);
+					if(ids == null) {
+						ids = new Array();
+						userIds.set(domainIdStr,ids);
+					}
+					ids.push(user.id);
+				}
+			}
+		}
+		if(userIds == null) callback(); else {
+			var it = userIds.keys();
+			var success = null;
+			success = function() {
+				if(it.hasNext()) {
+					var domainIdStr1 = it.next();
+					_g.getUserEmails(albero.Int64Helper.makeFromIdStr(domainIdStr1),userIds.get(domainIdStr1),success);
+				} else callback();
+			};
+			success();
+		}
 	}
 	,getDomains: function(callback) {
 		var _g1 = this;
@@ -2579,6 +2625,10 @@ albero.proxy.DataStoreProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.pro
 			this.friends.set(key,friendsInDomain);
 		}
 		return friendsInDomain;
+	}
+	,isFriendOrAcquaintance: function(domainId,userId) {
+		var this1 = this.getFriendsMap(domainId);
+		return this1.exists("_" + userId.high + "_" + userId.low);
 	}
 	,addFriend: function(domainId,user) {
 		var this1 = this.getFriendsMap(domainId);
@@ -3301,6 +3351,7 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 			break;
 		case "data_recovered":
 			this.dataRecovered = true;
+			this.eventEmitter.emit(note.getName());
 			break;
 		case "error_occurred":
 			this.eventEmitter.emit(note.getName(),new Error("AdapterError"),note.getBody());
@@ -3309,7 +3360,7 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 	}
 	,emit: function(talk,type,user,msg) {
 		var _g = this;
-		if(type != null && talk != null && user != null) this.setEmailOfAllUsers(function() {
+		if(type != null && talk != null && user != null) this.api.getAllUserEmails(function() {
 			_g.eventEmitter.emit(type,{ room : albero.Int64Helper.idStr(talk.id), rooms : _g.simpleObject.talkObjects()},_g.simpleObject.userObject(user),msg);
 		});
 	}
@@ -3372,60 +3423,6 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 				}
 				emit("TextMessage",msg.userId,text);
 			}
-		}
-	}
-	,setEmailOfAllUsers: function(callback) {
-		var _g = this;
-		var userIds = null;
-		var findDomainId = function(userId) {
-			var _g1 = 0;
-			var _g2 = _g.dataStore.getTalks();
-			while(_g1 < _g2.length) {
-				var talk = _g2[_g1];
-				++_g1;
-				var _g3 = 0;
-				var _g4 = talk.userIds;
-				while(_g3 < _g4.length) {
-					var uid = _g4[_g3];
-					++_g3;
-					if(uid != null && userId != null && uid.high == userId.high && uid.low == userId.low) return albero.Int64Helper.idStr(talk.domainId);
-				}
-			}
-			return null;
-		};
-		var $it0 = (function($this) {
-			var $r;
-			var this1 = $this.dataStore.getUsermap();
-			$r = this1.iterator();
-			return $r;
-		}(this));
-		while( $it0.hasNext() ) {
-			var user = $it0.next();
-			if(user.email == null) {
-				var domainIdStr = findDomainId(user.id);
-				if(domainIdStr != null) {
-					if(userIds == null) userIds = new haxe.ds.StringMap();
-					var ids = userIds.get(domainIdStr);
-					if(ids == null) {
-						ids = new Array();
-						userIds.set(domainIdStr,ids);
-					}
-					ids.push(user.id);
-				}
-			}
-		}
-		if(userIds == null) callback(); else {
-			var api;
-			api = js.Boot.__cast(this.facade.retrieveProxy("api") , albero.proxy.AlberoServiceProxy);
-			var it = userIds.keys();
-			var success = null;
-			success = function() {
-				if(it.hasNext()) {
-					var domainIdStr1 = it.next();
-					api.getUserEmails(albero.Int64Helper.makeFromIdStr(domainIdStr1),userIds.get(domainIdStr1),success);
-				} else callback();
-			};
-			success();
 		}
 	}
 	,__class__: albero_cli.mediator.CommandLineMediator
@@ -3875,6 +3872,9 @@ haxe.ds.IntMap.prototype = {
 	,get: function(key) {
 		return this.h[key];
 	}
+	,exists: function(key) {
+		return this.h.hasOwnProperty(key);
+	}
 	,remove: function(key) {
 		if(!this.h.hasOwnProperty(key)) return false;
 		delete(this.h[key]);
@@ -3909,6 +3909,9 @@ haxe.ds.ObjectMap.prototype = {
 		var id = key.__id__ || (key.__id__ = ++haxe.ds.ObjectMap.count);
 		this.h[id] = value;
 		this.h.__keys__[id] = key;
+	}
+	,exists: function(key) {
+		return this.h.__keys__[key.__id__] != null;
 	}
 	,remove: function(key) {
 		var id = key.__id__;
@@ -5003,7 +5006,7 @@ albero.proxy.RoutingProxy.__meta__ = { fields : { settings : { inject : null}, d
 albero.proxy.RoutingProxy.NAME = "routing";
 albero.proxy.SettingsProxy.NAME = "settings";
 puremvc.patterns.mediator.Mediator.NAME = "Mediator";
-albero_cli.mediator.CommandLineMediator.__meta__ = { fields : { dataStore : { inject : null}, simpleObject : { inject : null}, messageEvent : { inject : null}}};
+albero_cli.mediator.CommandLineMediator.__meta__ = { fields : { dataStore : { inject : null}, api : { inject : null}, simpleObject : { inject : null}, messageEvent : { inject : null}}};
 albero_cli.mediator.CommandLineMediator.NAME = "commandline";
 albero_cli.proxy.MessageEventProxy.__meta__ = { fields : { dataStore : { inject : null}, simpleObject : { inject : null}}};
 albero_cli.proxy.MessageEventProxy.NAME = "messageEvent";

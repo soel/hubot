@@ -90,11 +90,12 @@ class Direct extends Adapter
      err[key] = value for key,value of obj
      self.robot.emit "error", err
 
+   bot.on "data_recovered", ->
+     self.emit "connected"
+
    bot.listen()
 
    @bot = bot
-
-   self.emit "connected"
 
 exports.use = (robot) ->
   new Direct robot
