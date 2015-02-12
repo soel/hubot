@@ -6,11 +6,11 @@ _map = (msg, callback) ->
   text = msg.match[1].replace(/[\n\r]/g, " ")
   m = text.match(/^今ココ[:：] (.*) (http:\/\/.*)$/)
   if m?
-    place = m[1].replace(/\ \(近辺\)$/, "").replace(/^緯度 [:：].*$/, "")
+    place = m[1].replace(/\ ?\(近辺\)$/, "").replace(/^緯度 [:：].*$/, "")
     url = m[2]
 
     cb = (url) ->
-      loc = url.match(/q=([0-9.]+),([0-9.]+)/) or [0, 0]
+      loc = url.match(/[@=]([0-9.]+),([0-9.]+)/) or ["", "", ""]
       msg.json =
         place:place
         lat:loc[1]
