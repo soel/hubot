@@ -2,6 +2,7 @@
 # customize
 endpoint = process.env.HUBOT_DIRECT_ENDPOINT ? "wss://api.direct4b.com/albero-app-server/api"
 accessToken = process.env.HUBOT_DIRECT_TOKEN
+proxyURL = process.env.HUBOT_DIRECT_PROXY_URL or process.env.HTTPS_PROXY or process.env.HTTP_PROXY
 
 # Hubot dependencies
 Robot                                                = require '../robot'
@@ -55,6 +56,7 @@ class Direct extends Adapter
      endpoint: endpoint
      name:     @robot.name
      access_token: accessToken
+     proxyURL: proxyURL
 
    bot = DirectAPI.getInstance();
    bot.setOptions options
