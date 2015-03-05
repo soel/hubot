@@ -27,6 +27,7 @@ DirectAPI.prototype = {
 			Settings.endpoint = options.endpoint;
 			Settings.$name = options.name;
 			Settings.accessToken = options.access_token;
+			Settings.proxyURL = options.proxyURL;
 		} else throw new Error("Not enough parameters provided. I need a access token");
 	}
 	,announce: function(envelope,content) {
@@ -1008,6 +1009,8 @@ albero.command.SignOutCommand.__super__ = albero.command.AutoBindCommand;
 albero.command.SignOutCommand.prototype = $extend(albero.command.AutoBindCommand.prototype,{
 	execute: function(notification) {
 		this.api.deleteSession();
+		if(console != null) console.error(AlberoLog.dateStr() + "signout","","","","");
+		js.Node.process.exit(1);
 	}
 	,__class__: albero.command.SignOutCommand
 });
@@ -1542,11 +1545,22 @@ albero.js.WebSocket = function(url) {
 	this.ws.on("connect",function(connection) {
 		_g.connection = connection;
 		connection.on("error",$bind(_g,_g.onError));
-		connection.on("close",$bind(_g,_g.onClose));
+		connection.on("close",$bind(_g,_g.onConnectionClose));
 		connection.on("message",$bind(_g,_g.onMessage));
 		_g.onOpen(null);
 	});
-	this.ws.connect(url);
+	var requestOptions = null;
+	if(Settings.proxyURL != null) {
+		var proxy = js.Node.require("url").parse(Settings.proxyURL);
+		var options = { host : proxy.hostname};
+		if(proxy.port != null) options.port = Std.parseInt(proxy.port);
+		if(proxy.auth != null) options.proxyAuth = proxy.auth;
+		var tunnel = js.Node.require("tunnel-agent");
+		var factory;
+		if(proxy.protocol == "https:") factory = tunnel.httpsOverHttps; else factory = tunnel.httpsOverHttp;
+		requestOptions = { agent : factory({ proxy : options})};
+	}
+	this.ws.connect(url,null,null,null,requestOptions);
 };
 $hxClasses["albero.js.WebSocket"] = albero.js.WebSocket;
 albero.js.WebSocket.__name__ = ["albero","js","WebSocket"];
@@ -1572,6 +1586,9 @@ albero.js.WebSocket.prototype = {
 		this.connection = null;
 		if(console != null) console.info(AlberoLog.dateStr() + "WebSocket closed. event:%s reason:%s wasClean:%s",event.code,event.reason,event.wasClean,"");
 		if(this.onclose != null) this.onclose(event.code,event.reason,event.wasClean);
+	}
+	,onConnectionClose: function(code,reason) {
+		this.onClose({ code : code, reason : reason});
 	}
 	,close: function() {
 		if(this.isClosed()) return;
@@ -1938,6 +1955,8 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 				_g.rpc.call("start_notification",[],function(data) {
 					var succeed = data;
 					if(!succeed) {
+						if(console != null) console.error(AlberoLog.dateStr() + "start_notification failed.","","","","");
+						js.Node.process.exit(1);
 					}
 				});
 			};
@@ -2374,8 +2393,18 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 	,upload: function(domainId,talkId,file) {
 		var _g = this;
 		var fileName = file.name.normalize("NFKC");
-		this.uploadFile(file,domainId,albero.proxy._AlberoServiceProxy.UploadUseType.MESSAGE,function(auth) {
-			_g.createMessage(talkId,albero.entity.MessageType.file,{ file_id : auth.file_id, content_type : file.type, content_size : file.size, name : fileName, url : auth.get_url});
+		this.uploadThumbnail(file,domainId,function(thumbAuth) {
+			_g.uploadFile(file,domainId,albero.proxy._AlberoServiceProxy.UploadUseType.MESSAGE,function(auth) {
+				var fileInfo = { file_id : auth.file_id, content_type : file.type, content_size : file.size, name : fileName, url : auth.get_url};
+				if(thumbAuth != null) fileInfo.thumbnail_url = thumbAuth.get_url;
+				_g.createMessage(talkId,albero.entity.MessageType.file,fileInfo);
+			});
+		});
+	}
+	,uploadThumbnail: function(file,domainId,callback) {
+		var _g = this;
+		this.fileService.createThumbnail(file,function(thumbFile) {
+			if(thumbFile != null) _g.uploadFile(thumbFile,domainId,albero.proxy._AlberoServiceProxy.UploadUseType.THUMBNAIL,callback); else callback(null);
 		});
 	}
 	,uploadFile: function(file,domainId,useType,callback) {
@@ -2388,8 +2417,12 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 		case 1:
 			useTypeInt = 1;
 			break;
-		default:
+		case 2:
 			useTypeInt = 2;
+			break;
+		case 3:
+			useTypeInt = 4;
+			break;
 		}
 		var fileName = file.name.normalize("NFKC");
 		this.rpc.call("create_upload_auth",[fileName,file.type,file.size,domainId,useTypeInt],function(auth) {
@@ -2554,7 +2587,7 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 	,__class__: albero.proxy.AlberoServiceProxy
 });
 albero.proxy._AlberoServiceProxy = {};
-albero.proxy._AlberoServiceProxy.UploadUseType = { __ename__ : true, __constructs__ : ["PROFILE_IMAGE","MESSAGE","TALK_ICON"] };
+albero.proxy._AlberoServiceProxy.UploadUseType = { __ename__ : true, __constructs__ : ["PROFILE_IMAGE","MESSAGE","TALK_ICON","THUMBNAIL"] };
 albero.proxy._AlberoServiceProxy.UploadUseType.PROFILE_IMAGE = ["PROFILE_IMAGE",0];
 albero.proxy._AlberoServiceProxy.UploadUseType.PROFILE_IMAGE.toString = $estr;
 albero.proxy._AlberoServiceProxy.UploadUseType.PROFILE_IMAGE.__enum__ = albero.proxy._AlberoServiceProxy.UploadUseType;
@@ -2564,6 +2597,9 @@ albero.proxy._AlberoServiceProxy.UploadUseType.MESSAGE.__enum__ = albero.proxy._
 albero.proxy._AlberoServiceProxy.UploadUseType.TALK_ICON = ["TALK_ICON",2];
 albero.proxy._AlberoServiceProxy.UploadUseType.TALK_ICON.toString = $estr;
 albero.proxy._AlberoServiceProxy.UploadUseType.TALK_ICON.__enum__ = albero.proxy._AlberoServiceProxy.UploadUseType;
+albero.proxy._AlberoServiceProxy.UploadUseType.THUMBNAIL = ["THUMBNAIL",3];
+albero.proxy._AlberoServiceProxy.UploadUseType.THUMBNAIL.toString = $estr;
+albero.proxy._AlberoServiceProxy.UploadUseType.THUMBNAIL.__enum__ = albero.proxy._AlberoServiceProxy.UploadUseType;
 albero.proxy.AppStateProxy = function() {
 	puremvc.patterns.proxy.Proxy.call(this,"appState");
 };
@@ -2913,6 +2949,9 @@ albero.proxy.FileServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.p
 		}
 		return { name : name, size : 1, type : type};
 	}
+	,createThumbnail: function(file,callback) {
+		if(StringTools.startsWith(file.type,"video/")) callback(null); else callback(null);
+	}
 	,__class__: albero.proxy.FileServiceProxy
 });
 albero.proxy.FormatterProxy = function() {
@@ -3238,6 +3277,10 @@ albero.proxy.SettingsProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.prot
 		return sys.io.File.getContent("settings/" + key);
 	}
 	,remove: function(key) {
+		if(key == "access_token") {
+			Settings.accessToken = null;
+			return;
+		}
 		js.Node.require("fs").unlinkSync("settings/" + key);
 	}
 	,clearSelectedStampTabId: function() {
@@ -3350,6 +3393,7 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 			this.messageEvent.messageRead(status1.talkId,status1.id,status1.readUserIds,status1.unreadUserIds);
 			break;
 		case "data_recovered":
+			if(this.dataRecovered) return;
 			this.dataRecovered = true;
 			this.eventEmitter.emit(note.getName());
 			break;
@@ -3607,7 +3651,7 @@ albero_cli.proxy.SendQueueProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 		if(this.sending) return;
 		this.sending = true;
 		var span = new Date().getTime() - this.lastSendTime.getTime();
-		var delay = Std["int"](Math.max(5000 - span,100));
+		var delay = Std["int"](Math.max(500 - span,100));
 		haxe.Timer.delay($bind(this,this.startSendTimer),delay);
 	}
 	,startSendTimer: function() {
@@ -3615,7 +3659,7 @@ albero_cli.proxy.SendQueueProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 		if(this.sendQueue.length == 0) {
 			this.lastSendTime = new Date();
 			this.sending = false;
-		} else haxe.Timer.delay($bind(this,this.startSendTimer),5000);
+		} else haxe.Timer.delay($bind(this,this.startSendTimer),500);
 	}
 	,parseContent: function(obj) {
 		if(obj == null) return null;
