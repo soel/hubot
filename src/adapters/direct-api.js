@@ -2385,6 +2385,7 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 		if(timer != null) timer.stop();
 		timer = haxe.Timer.delay(function() {
 			_g.updateReadStatusesTimers.remove(talkIdStr);
+			if(_g.dataStore.getTalkStatus(talkId) == null) return;
 			_g.rpc.call("update_read_statuses",[talkId,maxMsgId],function(_) {
 			});
 		},1000);
@@ -3361,8 +3362,10 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 		case "notify_update_group_talk":
 			if(!this.dataRecovered) return;
 			var talk1 = note.getBody();
+			var talkName;
+			if(talk1.name != null) talkName = talk1.name; else talkName = "";
 			haxe.Timer.delay(function() {
-				_g1.emit(talk1,"TopicChangeMessage",_g1.dataStore.currentUser,talk1.name);
+				_g1.emit(talk1,"TopicChangeMessage",_g1.dataStore.currentUser,talkName);
 			},500);
 			break;
 		case "notify_create_message":
@@ -3376,7 +3379,7 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 			haxe.Timer.delay(function() {
 				_g1.sendNotification("Read",albero.command.ReadType.TALK(msg.talkId,msg.id));
 				_g1.dispatch(msg);
-			},500);
+			},200);
 			break;
 		case "notify_update_read_statuses":
 			var statuses = note.getBody();
@@ -3432,10 +3435,14 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 				}
 			} else if(subtype == "delete_talker") {
 				emit("LeaveMessage",content.deleted_user_id);
-				if(content.user_ids.length <= 1) this.sendNotification("Talk",albero.command.TalkAction.DELETE(talk));
+				if(content.user_ids.length <= 1) haxe.Timer.delay(function() {
+					_g.sendNotification("Talk",albero.command.TalkAction.DELETE(talk));
+				},500);
 			} else if(subtype == "hide_pair_talk") {
 				emit("LeaveMessage",content.user_id);
-				this.sendNotification("Talk",albero.command.TalkAction.DELETE(talk));
+				haxe.Timer.delay(function() {
+					_g.sendNotification("Talk",albero.command.TalkAction.DELETE(talk));
+				},500);
 			}
 		} else {
 			var text = null;
