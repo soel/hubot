@@ -586,6 +586,10 @@ albero.Int64Helper.idStrToInt64 = function(str) {
 	var vals = str.split("_");
 	if(vals.length > 2) return haxe.Int64.make(Std.parseInt(vals[1]),Std.parseInt(vals[2])); else return null;
 };
+albero.Int64Helper.decrement = function(a) {
+	if(a == null) return null;
+	return haxe.Int64.sub(a,new haxe.Int64(0,1));
+};
 albero.Int64Helper.contains = function(array,x) {
 	if(array == null) return false;
 	var _g = 0;
@@ -775,7 +779,7 @@ albero.command.FileCommand.prototype = $extend(albero.command.AutoBindCommand.pr
 			break;
 		case 1:
 			var info = body[2];
-			this.api.deleteFile(info.id);
+			this.api.deleteAttachment(info.id,info.messageId);
 			break;
 		case 2:
 			var type = body[5];
@@ -929,7 +933,7 @@ albero.command.ReloadDataCommand.prototype = $extend(albero.command.AutoBindComm
 		case 9:
 			var range3 = dataType[3];
 			var talk2 = dataType[2];
-			this.api.getFiles(talk2,range3);
+			this.api.getAttachments(talk2,range3);
 			break;
 		}
 	}
@@ -1009,6 +1013,7 @@ albero.command.SignOutCommand.__super__ = albero.command.AutoBindCommand;
 albero.command.SignOutCommand.prototype = $extend(albero.command.AutoBindCommand.prototype,{
 	execute: function(notification) {
 		this.api.deleteSession();
+		this.settings.clearInputTextForAll();
 		if(console != null) console.error(AlberoLog.dateStr() + "signout","","","","");
 		js.Node.process.exit(1);
 	}
@@ -1212,6 +1217,8 @@ albero.entity.DomainInvite.prototype = {
 };
 albero.entity.FileInfo = function(props) {
 	if(props == null) return;
+	this.messageId = props.message_id;
+	this.talkId = props.talk_id;
 	this.id = props.file_id;
 	this.userId = props.user_id;
 	this.name = props.name;
@@ -1220,11 +1227,24 @@ albero.entity.FileInfo = function(props) {
 	this.url = props.url;
 	this.thumbUrl = props.thumbnail_url;
 	this.updatedAt = props.updated_at;
+	this.file = props.file;
+	this.thumbFile = props.thumbnail_file;
 };
 $hxClasses["albero.entity.FileInfo"] = albero.entity.FileInfo;
 albero.entity.FileInfo.__name__ = ["albero","entity","FileInfo"];
 albero.entity.FileInfo.prototype = {
 	__class__: albero.entity.FileInfo
+};
+albero.entity.FileInfoDeletion = function(props) {
+	if(props == null) return;
+	this.messageId = props[0];
+	this.talkId = props[1];
+	this.fileId = props[2];
+};
+$hxClasses["albero.entity.FileInfoDeletion"] = albero.entity.FileInfoDeletion;
+albero.entity.FileInfoDeletion.__name__ = ["albero","entity","FileInfoDeletion"];
+albero.entity.FileInfoDeletion.prototype = {
+	__class__: albero.entity.FileInfoDeletion
 };
 albero.entity.Message = function(props) {
 	if(props == null) return;
@@ -1373,7 +1393,7 @@ albero.entity.Question = function(props) {
 	this.type = albero.entity.Message.typeOf(props.type);
 	this.content = props.content;
 	this.userId = props.user_id;
-	this.recipientIds = props.recipient_ids;
+	this.recipientIds = props.assigned_user_ids;
 	this.responses = this.createResponses(props.responses);
 	this.closingType = albero.entity.Question.typeOf(props.closing_type);
 	this.maxResponseId = props.max_response_id;
@@ -1726,6 +1746,7 @@ albero.proxy.AlberoBroadcastProxy.prototype = $extend(puremvc.patterns.proxy.Pro
 			case 4:
 				if(msg.content.file_id != null) {
 					var file = new albero.entity.FileInfo();
+					file.messageId = msg.id;
 					file.talkId = msg.talkId;
 					file.userId = msg.userId;
 					file.updatedAt = msg.createdAt;
@@ -1734,7 +1755,7 @@ albero.proxy.AlberoBroadcastProxy.prototype = $extend(puremvc.patterns.proxy.Pro
 					file.contentType = msg.content.content_type;
 					file.contentSize = msg.content.content_size;
 					file.url = msg.content.url;
-					this.sendNotification("notify_update_fileinfo",file);
+					this.sendNotification("notify_create_attachment",file);
 				}
 				break;
 			default:
@@ -1832,6 +1853,9 @@ albero.proxy.AlberoBroadcastProxy.prototype = $extend(puremvc.patterns.proxy.Pro
 		case "notify_update_announcement_status":
 			obj = new albero.entity.AnnouncementStatus(obj);
 			break;
+		case "notify_delete_attachment":
+			obj = new albero.entity.FileInfoDeletion(obj);
+			break;
 		default:
 			if(console != null) console.warn(AlberoLog.dateStr() + "Unknown method. name:",name," obj:",obj,"");
 		}
@@ -1912,6 +1936,7 @@ albero.proxy.AlberoBroadcastProxy.prototype = $extend(puremvc.patterns.proxy.Pro
 	,__class__: albero.proxy.AlberoBroadcastProxy
 });
 albero.proxy.AlberoServiceProxy = function() {
+	this.mockMsgId = new haxe.Int64(-1,-1);
 	puremvc.patterns.proxy.Proxy.call(this,"api");
 	this.updateReadStatusesTimers = new haxe.ds.StringMap();
 	this.updateReadAnnouncementStatusesTimers = new haxe.ds.StringMap();
@@ -1935,7 +1960,7 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 	}
 	,createSession: function(accessToken) {
 		var _g = this;
-		this.rpc.call("create_session",[accessToken,"1.21"],function(map) {
+		this.rpc.call("create_session",[accessToken,"1.31"],function(map) {
 			_g.dataStore.setCurrentUser(_g.newUser(map.user));
 			_g.settings.setConfiguration(new albero.entity.Configuration(map.configuration));
 			var callback = function() {
@@ -2296,7 +2321,7 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 			var note;
 			if(pair) note = "notify_create_pair_talk"; else note = "notify_create_group_talk";
 			_g.sendNotification(note,talk);
-			_g.sendNotification("talk_selection_changed",talk);
+			_g.settings.setSelectedTalk(talk);
 		});
 	}
 	,updateGroupTalk: function(talk,name,iconFile,iconUrl) {
@@ -2363,9 +2388,13 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 	}
 	,createMessage: function(talkId,type,content,key) {
 		var _g = this;
-		this.sendNotification("notify_create_message",this.newDummyMessage(talkId,type,content));
+		var dummy = this.newDummyMessage(talkId,type,content);
+		this.sendNotification("create_message_start",dummy);
 		this.rpc.call("create_message",[talkId,albero.entity.Message.enumIndex(type),content],function(message) {
-			_g.sendNotification("notify_create_message",_g.newMessage(message),key);
+			_g.sendNotification("create_message_complete",[_g.newMessage(message),dummy.id],key);
+		},function(error) {
+			_g.sendNotification("create_message_fail",dummy);
+			_g.sendNotification("error_occurred",error);
 		});
 	}
 	,updateReadStatuses: function(talkId,maxMsgId) {
@@ -2394,17 +2423,26 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 	,upload: function(domainId,talkId,file) {
 		var _g = this;
 		var fileName = file.name.normalize("NFKC");
-		this.uploadThumbnail(file,domainId,function(thumbAuth) {
+		var dummyFileInfo = { content_type : file.type, content_size : file.size, name : fileName, file : file};
+		var dummy = this.newDummyMessage(talkId,albero.entity.MessageType.file,dummyFileInfo);
+		this.uploadThumbnail(file,domainId,talkId,dummy,function(thumbAuth) {
 			_g.uploadFile(file,domainId,albero.proxy._AlberoServiceProxy.UploadUseType.MESSAGE,function(auth) {
-				var fileInfo = { file_id : auth.file_id, content_type : file.type, content_size : file.size, name : fileName, url : auth.get_url};
-				if(thumbAuth != null) fileInfo.thumbnail_url = thumbAuth.get_url;
-				_g.createMessage(talkId,albero.entity.MessageType.file,fileInfo);
+				var newFileInfo = { url : auth.get_url, content_type : file.type, content_size : file.size, name : fileName, file_id : auth.file_id};
+				if(thumbAuth != null) newFileInfo.thumbnail_url = thumbAuth.get_url;
+				_g.rpc.call("create_message",[talkId,albero.entity.Message.enumIndex(albero.entity.MessageType.file),newFileInfo],function(message) {
+					_g.sendNotification("create_message_complete",[_g.newMessage(message),dummy.id]);
+				},function(error) {
+					_g.sendNotification("create_message_fail",dummy);
+					_g.sendNotification("error_occurred",error);
+				});
 			});
 		});
 	}
-	,uploadThumbnail: function(file,domainId,callback) {
+	,uploadThumbnail: function(file,domainId,talkId,dummyMessage,callback) {
 		var _g = this;
 		this.fileService.createThumbnail(file,function(thumbFile) {
+			dummyMessage.content.thumbnail_file = thumbFile;
+			_g.sendNotification("create_message_start",dummyMessage);
 			if(thumbFile != null) _g.uploadFile(thumbFile,domainId,albero.proxy._AlberoServiceProxy.UploadUseType.THUMBNAIL,callback); else callback(null);
 		});
 	}
@@ -2432,25 +2470,20 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 			});
 		});
 	}
-	,deleteFile: function(fileId) {
-		var _g = this;
-		this.rpc.call("delete_file",[fileId],function(_) {
-			_g.sendNotification("notify_delete_fileinfo",fileId);
-		});
+	,deleteAttachment: function(fileId,messageId) {
+		this.rpc.call("delete_attachment",[fileId,messageId]);
 	}
-	,getFiles: function(talk,range) {
+	,getAttachments: function(talk,range) {
 		var _g1 = this;
 		var count = 20;
 		if(range == null) range = { sinceId : null, maxId : null};
-		this.rpc.call("get_talk_files",[talk.id,count,range.sinceId,range.maxId],function(result) {
+		this.rpc.call("get_attachments",[talk.id,count,range.sinceId,range.maxId],function(result) {
 			var files = new Array();
 			var _g = 0;
 			while(_g < result.length) {
 				var data = result[_g];
 				++_g;
-				var info = _g1.newFileInfo(data);
-				info.talkId = talk.id;
-				files.push(info);
+				files.push(_g1.newFileInfo(data));
 			}
 			_g1.sendNotification("get_file_responsed",{ talkId : talk.id, files : files});
 		});
@@ -2566,11 +2599,12 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 	}
 	,newDummyMessage: function(talkId,type,content) {
 		var msg = new albero.entity.Message();
-		msg.id = new haxe.Int64(0,0);
+		msg.id = this.mockMsgId;
 		msg.userId = this.dataStore.currentUser.id;
 		msg.talkId = talkId;
 		msg.type = type;
 		msg.content = content;
+		this.mockMsgId = albero.Int64Helper.decrement(this.mockMsgId);
 		return msg;
 	}
 	,newQuestion: function(obj) {
@@ -2833,7 +2867,9 @@ albero.proxy.FileServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.p
 		if(url == null || url.length == 0) return "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 		if(StringTools.startsWith(url,this.validHost)) {
 			var accessToken = this.settings.getAccessToken();
-			return url + "?Authorization=ALB%20" + accessToken;
+			var sep;
+			if(url.indexOf("?") != -1) sep = "&"; else sep = "?";
+			return url + sep + "Authorization=ALB%20" + accessToken;
 		} else return url;
 	}
 	,download: function(url,path,callback) {
@@ -3286,6 +3322,10 @@ albero.proxy.SettingsProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.prot
 	}
 	,clearSelectedStampTabId: function() {
 	}
+	,clearInputTextForAll: function() {
+		js.Browser.getLocalStorage().removeItem("input_text");
+		this.inputTexts = null;
+	}
 	,__class__: albero.proxy.SettingsProxy
 });
 puremvc.interfaces.IMediator = function() { };
@@ -3335,7 +3375,7 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 		this.dataRecovered = false;
 	}
 	,listNotificationInterests: function() {
-		return ["current_user_changed","notify_add_domain_invite","notify_create_pair_talk","notify_create_group_talk","notify_update_group_talk","notify_update_local_talk_status","notify_create_message","notify_update_read_statuses","notify_get_message_status","data_recovered","error_occurred"];
+		return ["current_user_changed","notify_add_domain_invite","notify_create_pair_talk","notify_create_group_talk","notify_update_group_talk","notify_update_local_talk_status","notify_create_message","create_message_complete","notify_update_read_statuses","notify_get_message_status","data_recovered","error_occurred"];
 	}
 	,handleNotification: function(note) {
 		var _g1 = this;
@@ -3368,17 +3408,23 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 				_g1.emit(talk1,"TopicChangeMessage",_g1.dataStore.currentUser,talkName);
 			},500);
 			break;
-		case "notify_create_message":
-			var msg = note.getBody();
+		case "create_message_complete":
+			var args = note.getBody();
+			var msg = args[0];
+			var dummyId = args[1];
 			if(this.dataStore.isCurrentUser(msg.userId)) {
 				this.messageEvent.messageCreated(msg,note.getType());
 				return;
 			}
-			var status = this.dataStore.getTalkStatus(msg.talkId);
-			if(status != null && status.maxReadMessageId != null && haxe.Int64.compare(status.maxReadMessageId,msg.id) >= 0) return;
+			break;
+		case "notify_create_message":
+			var msg1 = note.getBody();
+			if(this.dataStore.isCurrentUser(msg1.userId)) return;
+			var status = this.dataStore.getTalkStatus(msg1.talkId);
+			if(status != null && status.maxReadMessageId != null && haxe.Int64.compare(status.maxReadMessageId,msg1.id) >= 0) return;
 			haxe.Timer.delay(function() {
-				_g1.sendNotification("Read",albero.command.ReadType.TALK(msg.talkId,msg.id));
-				_g1.dispatch(msg);
+				_g1.sendNotification("Read",albero.command.ReadType.TALK(msg1.talkId,msg1.id));
+				_g1.dispatch(msg1);
 			},200);
 			break;
 		case "notify_update_read_statuses":
@@ -4530,6 +4576,18 @@ js.Boot.__instanceof = function(o,cl) {
 js.Boot.__cast = function(o,t) {
 	if(js.Boot.__instanceof(o,t)) return o; else throw "Cannot cast " + Std.string(o) + " to " + Std.string(t);
 };
+js.Browser = function() { };
+$hxClasses["js.Browser"] = js.Browser;
+js.Browser.__name__ = ["js","Browser"];
+js.Browser.getLocalStorage = function() {
+	try {
+		var s = window.localStorage;
+		s.getItem("");
+		return s;
+	} catch( e ) {
+		return null;
+	}
+};
 js.Node = function() { };
 $hxClasses["js.Node"] = js.Node;
 js.Node.__name__ = ["js","Node"];
@@ -5035,7 +5093,7 @@ albero.command.ReloadDataCommand.__meta__ = { fields : { api : { inject : null}}
 albero.command.SelectTalkCommand.__meta__ = { fields : { settings : { inject : null}}};
 albero.command.SendCommand.__meta__ = { fields : { api : { inject : null}}};
 albero.command.SignInCommand.__meta__ = { fields : { api : { inject : null}, settings : { inject : null}, accountLoader : { inject : null}}};
-albero.command.SignOutCommand.__meta__ = { fields : { api : { inject : null}}};
+albero.command.SignOutCommand.__meta__ = { fields : { api : { inject : null}, settings : { inject : null}}};
 albero.command.TalkCommand.__meta__ = { fields : { api : { inject : null}, dataStore : { inject : null}}};
 albero.command.UpdateUserCommand.__meta__ = { fields : { api : { inject : null}}};
 albero.command.UrlCommand.__meta__ = { fields : { routing : { inject : null}}};
