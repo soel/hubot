@@ -1,6 +1,7 @@
 #
 # robot.coffee に対する拡張部分
 #
+GOOGLE_SHORTENER_API_KEY="AIzaSyAUisTOqBoSigbgtdZDIH-2PYHpzSRYmoQ"
 
 _map = (msg, callback) ->
   text = msg.match[1].replace(/[\n\r]/g, " ")
@@ -20,7 +21,7 @@ _map = (msg, callback) ->
     if url.indexOf("goo.gl") == -1
       cb url
     else
-      msg.http("https://www.googleapis.com/urlshortener/v1/url?shortUrl=" + url)
+      msg.http("https://www.googleapis.com/urlshortener/v1/url?shortUrl=#{url}&key=#{GOOGLE_SHORTENER_API_KEY}")
         .get() (err, res, body) ->
           if err?
             console.log err
