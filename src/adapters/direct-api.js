@@ -782,6 +782,7 @@ albero.command.FileCommand.prototype = $extend(albero.command.AutoBindCommand.pr
 			this.api.deleteAttachment(info.id,info.messageId);
 			break;
 		case 2:
+			var key = body[6];
 			var type = body[5];
 			var name = body[4];
 			var path = body[3];
@@ -792,7 +793,7 @@ albero.command.FileCommand.prototype = $extend(albero.command.AutoBindCommand.pr
 			if(name != null) info1.name = name;
 			if(type != null) info1.type = type;
 			var talk1 = this.dataStore.getTalk(talkId);
-			this.api.upload(talk1.domainId,talk1.id,info1);
+			this.api.upload(talk1.domainId,talk1.id,info1,key);
 			break;
 		case 3:
 			var callback = body[4];
@@ -807,7 +808,7 @@ albero.command.FileCommand.prototype = $extend(albero.command.AutoBindCommand.pr
 albero.command.FileAction = { __ename__ : true, __constructs__ : ["UPLOAD","DELETE","UPLOAD_PATH","DOWNLOAD_PATH"] };
 albero.command.FileAction.UPLOAD = function(talk,file) { var $x = ["UPLOAD",0,talk,file]; $x.__enum__ = albero.command.FileAction; $x.toString = $estr; return $x; };
 albero.command.FileAction.DELETE = function(info) { var $x = ["DELETE",1,info]; $x.__enum__ = albero.command.FileAction; $x.toString = $estr; return $x; };
-albero.command.FileAction.UPLOAD_PATH = function(talkId,path,name,type) { var $x = ["UPLOAD_PATH",2,talkId,path,name,type]; $x.__enum__ = albero.command.FileAction; $x.toString = $estr; return $x; };
+albero.command.FileAction.UPLOAD_PATH = function(talkId,path,name,type,key) { var $x = ["UPLOAD_PATH",2,talkId,path,name,type,key]; $x.__enum__ = albero.command.FileAction; $x.toString = $estr; return $x; };
 albero.command.FileAction.DOWNLOAD_PATH = function(url,path,callback) { var $x = ["DOWNLOAD_PATH",3,url,path,callback]; $x.__enum__ = albero.command.FileAction; $x.toString = $estr; return $x; };
 albero.command.ManageFriendsCommand = function() {
 	albero.command.AutoBindCommand.call(this);
@@ -2420,7 +2421,7 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 		},1000);
 		this.updateReadStatusesTimers.set(talkIdStr,timer);
 	}
-	,upload: function(domainId,talkId,file) {
+	,upload: function(domainId,talkId,file,key) {
 		var _g = this;
 		var fileName = file.name.normalize("NFKC");
 		var dummyFileInfo = { content_type : file.type, content_size : file.size, name : fileName, file : file};
@@ -2430,7 +2431,7 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 				var newFileInfo = { url : auth.get_url, content_type : file.type, content_size : file.size, name : fileName, file_id : auth.file_id};
 				if(thumbAuth != null) newFileInfo.thumbnail_url = thumbAuth.get_url;
 				_g.rpc.call("create_message",[talkId,albero.entity.Message.enumIndex(albero.entity.MessageType.file),newFileInfo],function(message) {
-					_g.sendNotification("create_message_complete",[_g.newMessage(message),dummy.id]);
+					_g.sendNotification("create_message_complete",[_g.newMessage(message),dummy.id],key);
 				},function(error) {
 					_g.sendNotification("create_message_fail",dummy);
 					_g.sendNotification("error_occurred",error);
@@ -2897,7 +2898,9 @@ albero.proxy.FileServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.p
 			});
 			res.on("end",function() {
 				out.end();
-				callback(path);
+				out.on("finish",function() {
+					callback(path);
+				});
 			});
 			res.on("error",function(e) {
 				callback(null);
@@ -3668,7 +3671,7 @@ albero_cli.proxy.SendQueueProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 			msg.type = this.detectType(msg.content);
 			if(msg.type == albero.entity.MessageType.unknown) return;
 			if(msg.type == albero.entity.MessageType.file && msg.content.path != null) {
-				this.sendFile(talkId,msg.content);
+				this.sendFile(talkId,msg.content,"_" + msgId.high + "_" + msgId.low);
 				return;
 			}
 			this.pushQueue(msg);
@@ -3687,7 +3690,7 @@ albero_cli.proxy.SendQueueProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 			}
 		}
 	}
-	,sendFile: function(talkId,localFile) {
+	,sendFile: function(talkId,localFile,key) {
 		var path;
 		var name = null;
 		var type = null;
@@ -3697,7 +3700,7 @@ albero_cli.proxy.SendQueueProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 			type = localFile.type;
 		}
 		if(path == null || !js.Node.require("fs").existsSync(path)) return;
-		this.sendNotification("File",albero.command.FileAction.UPLOAD_PATH(talkId,path,name,type));
+		this.sendNotification("File",albero.command.FileAction.UPLOAD_PATH(talkId,path,name,type,key));
 	}
 	,pushQueue: function(msg) {
 		this.sendQueue.push(msg);
