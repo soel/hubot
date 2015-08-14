@@ -10,6 +10,7 @@ class Brain extends EventEmitter
     @data =
       users:    { }
       talks:    { }
+      domains:  { }
       _private: { }
 
     @autoSave = true
@@ -161,6 +162,13 @@ class Brain extends EventEmitter
     if adapter.talks? then @data.talks = adapter.talks()
     @data.talks
 
+  # Public: Get an Array of Domain objects stored in the brain.
+  #
+  # Returns an Array of Domain objects.
+  domains: ->
+    adapter = @robot.adapter
+    if adapter.domains? then @data.domains = adapter.domains()
+    @data.domains
 
 # Private: Extend obj with objects passed as additional args.
 #
