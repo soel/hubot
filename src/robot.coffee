@@ -83,7 +83,7 @@ class Robot
   # Returns nothing.
   hear: (regex, options, callback) ->
     if typeof(regex) == 'string'
-      [regex, callback] = direct.jsonMatcher(regex, callback)
+      [regex, options, callback] = direct.jsonMatcher(regex, options, callback)
     @listeners.push new TextListener(@, regex, options, callback)
 
   # Public: Adds a Listener that attempts to match incoming messages directed
@@ -98,7 +98,7 @@ class Robot
   # Returns nothing.
   respond: (regex, options, callback) ->
     if typeof(regex) == 'string'
-      [regex, callback] = direct.jsonMatcher(regex, callback)
+      [regex, options, callback] = direct.jsonMatcher(regex, options, callback)
     @listeners.push new TextListener(@, @respondPattern(regex), options, callback)
 
   # Private: Build a regular expression that matches messages addressed

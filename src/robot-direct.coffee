@@ -36,9 +36,15 @@ _map = (msg, callback) ->
               console.log ex
 
 # public:
-jsonMatcher = (prop, cb) ->
+jsonMatcher = (prop, options, callback) ->
+    if not callback?
+      callback = options
+      options = {}
+
     if prop == "map"
-      return [/((.|[\n\r])*)/, (msg) -> _map msg, cb]
+      regex = /((.|[\n\r])*)/
+      cb = (msg) -> _map(msg, callback)
+      return [regex, options, cb]
 
     checker = (obj) ->
       false unless obj?
@@ -49,7 +55,10 @@ jsonMatcher = (prop, cb) ->
         when "task"   then obj.title?
         when "file"   then obj.file_id?
         else obj[prop]?
-    [/({.*})/, (msg) -> cb msg if checker(msg.json = JSON.parse msg.match[1])]
+
+    regex = /({.*})/
+    cb = (msg) -> callback msg if checker(msg.json = JSON.parse msg.match[1])
+    return [regex, options, cb]
 
 module.exports =
   jsonMatcher:jsonMatcher
