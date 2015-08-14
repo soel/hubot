@@ -5,7 +5,7 @@ GOOGLE_SHORTENER_API_KEY="AIzaSyAUisTOqBoSigbgtdZDIH-2PYHpzSRYmoQ"
 
 _map = (msg, callback) ->
   text = msg.match[1].replace(/[\n\r]/g, " ")
-  m = text.match(/^今ココ[:：] (.*) (http:\/\/.*)$/)
+  m = text.match(/^今ココ[:：] (.*) (https?:\/\/.*)$/)
   if m?
     place = m[1].replace(/\ ?\(近辺\)$/, "").replace(/^緯度 [:：].*$/, "")
     url = m[2]
