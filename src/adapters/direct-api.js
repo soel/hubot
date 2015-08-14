@@ -8,7 +8,6 @@ function $extend(from, fields) {
 	return proto;
 }
 var DirectAPI = $hx_exports.DirectAPI = function() {
-	var EventEmitter = require('events').EventEmitter;
 	this.eventEmitter = new EventEmitter();
 	js.Node.require("unorm");
 };
@@ -25,18 +24,15 @@ DirectAPI.prototype = {
 		if(options != null) {
 			Settings.host = options.host;
 			Settings.endpoint = options.endpoint;
-			Settings.$name = options.name;
 			Settings.accessToken = options.access_token;
 			Settings.proxyURL = options.proxyURL;
-		} else throw new Error("Not enough parameters provided. I need a access token");
+		} else if(console != null) console.error(AlberoLog.dateStr(),"Not enough parameters provided. I need a access token","","","","");
 	}
 	,announce: function(envelope,content) {
 		var roomId = envelope.room;
 		var talkId = albero.Int64Helper.idStrToInt64(roomId);
 		if(talkId == null || content == null) return;
-		var dataStore;
-		dataStore = js.Boot.__cast(this.facade.retrieveProxy("dataStore") , albero.proxy.DataStoreProxy);
-		var talk = dataStore.getTalk(talkId);
+		var talk = this.data.getTalk(talkId);
 		if(talk == null) return;
 		var settings;
 		settings = js.Boot.__cast(this.facade.retrieveProxy("settings") , albero.proxy.SettingsProxy);
@@ -52,7 +48,7 @@ DirectAPI.prototype = {
 	,topic: function(envelope,topic) {
 		var roomId = envelope.room;
 		var talkId = albero.Int64Helper.idStrToInt64(roomId);
-		this.facade.sendNotification("Talk",albero.command.TalkAction.UPDATE(null,talkId,topic));
+		this.facade.sendNotification("Talk",albero.command.TalkAction.UPDATE(talkId,null,topic));
 	}
 	,download: function(envelope,remoteFile,callback) {
 		var url;
@@ -76,21 +72,23 @@ DirectAPI.prototype = {
 		var roomId = envelope.room;
 		var talkId = albero.Int64Helper.idStrToInt64(roomId);
 		haxe.Timer.delay(function() {
-			_g.facade.sendNotification("Talk",albero.command.TalkAction.DELETE(null,talkId));
+			_g.facade.sendNotification("Talk",albero.command.TalkAction.DELETE(talkId));
 		},500);
 	}
 	,userForId: function(id) {
-		return this.simpleObject.userObjectByIdStr(id);
+		return this.hubotObject.userObjectByIdStr(null,id);
 	}
 	,userObjects: function() {
-		return this.simpleObject.userObjects();
+		return this.hubotObject.userObjects(null);
 	}
 	,talkObjects: function() {
-		return this.simpleObject.talkObjects();
+		return this.hubotObject.talkObjects();
 	}
 	,listen: function() {
 		this.facade = albero.AppFacade.getInstance();
-		this.simpleObject = js.Boot.__cast(this.facade.retrieveProxy("simpleObject") , albero_cli.proxy.SimpleObjectProxy);
+		this.api = js.Boot.__cast(this.facade.retrieveProxy("api") , albero.proxy.AlberoServiceProxy);
+		this.data = js.Boot.__cast(this.facade.retrieveProxy("dataStore") , albero.proxy.DataStoreProxy);
+		this.hubotObject = js.Boot.__cast(this.facade.retrieveProxy("hubotObject") , albero_cli.proxy.HubotObjectProxy);
 		this.sendQueue = js.Boot.__cast(this.facade.retrieveProxy("sendQueue") , albero_cli.proxy.SendQueueProxy);
 		this.facade.startup();
 	}
@@ -217,10 +215,13 @@ List.prototype = {
 var IMap = function() { };
 $hxClasses["IMap"] = IMap;
 IMap.__name__ = ["IMap"];
-IMap.prototype = {
-	__class__: IMap
-};
 Math.__name__ = ["Math"];
+var ObjectHelper = function() { };
+$hxClasses["ObjectHelper"] = ObjectHelper;
+ObjectHelper.__name__ = ["ObjectHelper"];
+ObjectHelper.deepCopy = function(obj) {
+	return haxe.Json.parse(JSON.stringify(obj,null,null));
+};
 var Reflect = function() { };
 $hxClasses["Reflect"] = Reflect;
 Reflect.__name__ = ["Reflect"];
@@ -278,10 +279,6 @@ Std.parseFloat = function(x) {
 var StringTools = function() { };
 $hxClasses["StringTools"] = StringTools;
 StringTools.__name__ = ["StringTools"];
-StringTools.htmlEscape = function(s,quotes) {
-	s = s.split("&").join("&amp;").split("<").join("&lt;").split(">").join("&gt;");
-	if(quotes) return s.split("\"").join("&quot;").split("'").join("&#039;"); else return s;
-};
 StringTools.startsWith = function(s,start) {
 	return s.length >= start.length && HxOverrides.substr(s,0,start.length) == start;
 };
@@ -293,18 +290,25 @@ $hxClasses["TextHelper"] = TextHelper;
 TextHelper.__name__ = ["TextHelper"];
 TextHelper.slice = function(text,len) {
 	var result = new Array();
-	var str = "";
+	var addResult = function(str) {
+		while(str.length > len) {
+			result.push(HxOverrides.substr(str,0,len));
+			str = HxOverrides.substr(str,len,null);
+		}
+		if(str.length > 0) result.push(str);
+	};
+	var str1 = "";
 	var texts = text.split("\n");
 	while(texts.length > 0) {
 		var t = texts.shift();
-		if(str.length + t.length > len) {
-			result.push(str);
-			str = "";
+		if(str1.length + t.length > len) {
+			addResult(str1);
+			str1 = "";
 		}
-		if(str.length > 0) str += "\n";
-		str += t;
+		if(str1.length > 0) str1 += "\n";
+		str1 += t;
 	}
-	result.push(str);
+	addResult(str1);
 	return result;
 };
 var ValueType = { __ename__ : true, __constructs__ : ["TNull","TInt","TFloat","TBool","TObject","TFunction","TClass","TEnum","TUnknown"] };
@@ -473,7 +477,7 @@ albero.AppFacade.__super__ = puremvc.patterns.facade.Facade;
 albero.AppFacade.prototype = $extend(puremvc.patterns.facade.Facade.prototype,{
 	initializeModel: function() {
 		puremvc.patterns.facade.Facade.prototype.initializeModel.call(this);
-		var proxies = [new albero_cli.proxy.SimpleObjectProxy(),new albero_cli.proxy.SendQueueProxy(),new albero_cli.proxy.MessageEventProxy(),new albero.proxy.AppStateProxy(),new albero.proxy.DataStoreProxy(),new albero.proxy.SettingsProxy(),new albero.proxy.MsgPackRpcProxy(),new albero.proxy.AlberoBroadcastProxy(),new albero.proxy.AlberoServiceProxy(),new albero.proxy.FileServiceProxy(),new albero.proxy.FormatterProxy(),new albero.proxy.RoutingProxy()];
+		var proxies = [new albero_cli.proxy.HubotObjectProxy(),new albero_cli.proxy.SendQueueProxy(),new albero_cli.proxy.MessageEventProxy(),new albero.proxy.AppStateProxy(),new albero.proxy.DataStoreProxy(),new albero.proxy.SettingsProxy(),new albero.proxy.MsgPackRpcProxy(),new albero.proxy.AlberoBroadcastProxy(),new albero.proxy.AlberoServiceProxy(),new albero.proxy.FileServiceProxy(),new albero.proxy.FormatterProxy(),new albero.proxy.RoutingProxy()];
 		proxies.push(albero.proxy.AccountLoaderProxyFactory.newInstance());
 		var _g = 0;
 		while(_g < proxies.length) {
@@ -500,7 +504,7 @@ albero.AppFacade.prototype = $extend(puremvc.patterns.facade.Facade.prototype,{
 	}
 	,initializeController: function() {
 		puremvc.patterns.facade.Facade.prototype.initializeController.call(this);
-		var commands = [albero.command.DomainCommand,albero.command.SignInCommand,albero.command.SignOutCommand,albero.command.ReloadDataCommand,albero.command.SendCommand,albero.command.TalkCommand,albero.command.ManageFriendsCommand,albero.command.ReadCommand,albero.command.FileCommand,albero.command.SelectTalkCommand,albero.command.UpdateUserCommand,albero.command.UrlCommand];
+		var commands = [albero.command.DomainCommand,albero.command.SignInCommand,albero.command.SignOutCommand,albero.command.ReloadDataCommand,albero.command.SendCommand,albero.command.TalkCommand,albero.command.ManageFriendsCommand,albero.command.ReadCommand,albero.command.LoadStampSetCommand,albero.command.FileCommand,albero.command.SelectTalkCommand,albero.command.UpdateUserCommand,albero.command.UpdateProfileCommand,albero.command.UrlCommand];
 		var _g = 0;
 		while(_g < commands.length) {
 			var type = commands[_g];
@@ -625,9 +629,7 @@ albero.Urls.members = function(domainId) { var $x = ["members",3,domainId]; $x._
 albero.Urls.talks = function(domainId) { var $x = ["talks",4,domainId]; $x.__enum__ = albero.Urls; $x.toString = $estr; return $x; };
 albero.Urls.actions = function(domainId) { var $x = ["actions",5,domainId]; $x.__enum__ = albero.Urls; $x.toString = $estr; return $x; };
 albero.Urls.console = function(domainId) { var $x = ["console",6,domainId]; $x.__enum__ = albero.Urls; $x.toString = $estr; return $x; };
-albero.Urls.settings = ["settings",7];
-albero.Urls.settings.toString = $estr;
-albero.Urls.settings.__enum__ = albero.Urls;
+albero.Urls.settings = function(domainId) { var $x = ["settings",7,domainId]; $x.__enum__ = albero.Urls; $x.toString = $estr; return $x; };
 albero.Urls.announcements = ["announcements",8];
 albero.Urls.announcements.toString = $estr;
 albero.Urls.announcements.__enum__ = albero.Urls;
@@ -637,55 +639,6 @@ albero.Urls.error.__enum__ = albero.Urls;
 albero.Urls.loading = ["loading",10];
 albero.Urls.loading.toString = $estr;
 albero.Urls.loading.__enum__ = albero.Urls;
-albero.UrlsHelper = function() { };
-$hxClasses["albero.UrlsHelper"] = albero.UrlsHelper;
-albero.UrlsHelper.__name__ = ["albero","UrlsHelper"];
-albero.UrlsHelper.getDomainId = function(url) {
-	switch(url[1]) {
-	case 2:
-		var domainId = url[2];
-		return domainId;
-	case 3:
-		var domainId1 = url[2];
-		return domainId1;
-	case 4:
-		var domainId2 = url[2];
-		return domainId2;
-	case 5:
-		var domainId3 = url[2];
-		return domainId3;
-	case 6:
-		var domainId4 = url[2];
-		return domainId4;
-	default:
-		return null;
-	}
-};
-albero.UrlsHelper.toFragment = function(url) {
-	switch(url[1]) {
-	case 1:
-		return "/";
-	case 7:case 9:case 10:
-		return "/" + Std.string(url);
-	case 2:
-		var domainId = url[2];
-		return "/" + domainId.toString() + "/";
-	case 3:
-		var domainId1 = url[2];
-		return "/" + domainId1.toString() + "/members";
-	case 4:
-		var domainId2 = url[2];
-		return "/" + domainId2.toString() + "/talks";
-	case 5:
-		var domainId3 = url[2];
-		return "/" + domainId3.toString() + "/actions";
-	case 6:
-		var domainId4 = url[2];
-		return "/" + domainId4.toString() + "/console";
-	default:
-		return null;
-	}
-};
 puremvc.interfaces.INotifier = function() { };
 $hxClasses["puremvc.interfaces.INotifier"] = puremvc.interfaces.INotifier;
 puremvc.interfaces.INotifier.__name__ = ["puremvc","interfaces","INotifier"];
@@ -810,6 +763,18 @@ albero.command.FileAction.UPLOAD = function(talk,file) { var $x = ["UPLOAD",0,ta
 albero.command.FileAction.DELETE = function(info) { var $x = ["DELETE",1,info]; $x.__enum__ = albero.command.FileAction; $x.toString = $estr; return $x; };
 albero.command.FileAction.UPLOAD_PATH = function(talkId,path,name,type,key) { var $x = ["UPLOAD_PATH",2,talkId,path,name,type,key]; $x.__enum__ = albero.command.FileAction; $x.toString = $estr; return $x; };
 albero.command.FileAction.DOWNLOAD_PATH = function(url,path,callback) { var $x = ["DOWNLOAD_PATH",3,url,path,callback]; $x.__enum__ = albero.command.FileAction; $x.toString = $estr; return $x; };
+albero.command.LoadStampSetCommand = function() {
+	albero.command.AutoBindCommand.call(this);
+};
+$hxClasses["albero.command.LoadStampSetCommand"] = albero.command.LoadStampSetCommand;
+albero.command.LoadStampSetCommand.__name__ = ["albero","command","LoadStampSetCommand"];
+albero.command.LoadStampSetCommand.__super__ = albero.command.AutoBindCommand;
+albero.command.LoadStampSetCommand.prototype = $extend(albero.command.AutoBindCommand.prototype,{
+	execute: function(notification) {
+		var stamps = new Array();
+	}
+	,__class__: albero.command.LoadStampSetCommand
+});
 albero.command.ManageFriendsCommand = function() {
 	albero.command.AutoBindCommand.call(this);
 };
@@ -912,26 +877,36 @@ albero.command.ReloadDataCommand.prototype = $extend(albero.command.AutoBindComm
 			this.api.getAllUsers(marker);
 			break;
 		case 5:
+			var userIds = dataType[3];
+			var domainId = dataType[2];
+			this.api.getUsers(domainId,userIds);
+			break;
+		case 6:
+			var userId = dataType[3];
+			var domainId1 = dataType[2];
+			this.api.getProfile(domainId1,userId);
+			break;
+		case 7:
 			var marker1 = dataType[3];
 			var query = dataType[2];
 			this.api.searchDomainUsers(query,marker1);
 			break;
-		case 6:
+		case 8:
 			var range1 = dataType[2];
 			this.api.getAnnouncements(range1);
 			break;
-		case 7:
+		case 9:
 			var range2 = dataType[4];
 			var type = dataType[3];
 			var talk1 = dataType[2];
 			this.api.getQuestions(talk1,type,range2);
 			break;
-		case 8:
+		case 10:
 			var callback = dataType[3];
 			var msgId = dataType[2];
 			this.api.getQuestion(msgId,callback);
 			break;
-		case 9:
+		case 11:
 			var range3 = dataType[3];
 			var talk2 = dataType[2];
 			this.api.getAttachments(talk2,range3);
@@ -940,7 +915,7 @@ albero.command.ReloadDataCommand.prototype = $extend(albero.command.AutoBindComm
 	}
 	,__class__: albero.command.ReloadDataCommand
 });
-albero.command.ReloadDataType = { __ename__ : true, __constructs__ : ["Domains","Friends","Talks","Messages","AllUsers","SearchDomainUsers","Announcements","Questions","Question","Files"] };
+albero.command.ReloadDataType = { __ename__ : true, __constructs__ : ["Domains","Friends","Talks","Messages","AllUsers","GetUsers","GetProfile","SearchDomainUsers","Announcements","Questions","Question","Files"] };
 albero.command.ReloadDataType.Domains = ["Domains",0];
 albero.command.ReloadDataType.Domains.toString = $estr;
 albero.command.ReloadDataType.Domains.__enum__ = albero.command.ReloadDataType;
@@ -952,11 +927,13 @@ albero.command.ReloadDataType.Talks.toString = $estr;
 albero.command.ReloadDataType.Talks.__enum__ = albero.command.ReloadDataType;
 albero.command.ReloadDataType.Messages = function(talk,range) { var $x = ["Messages",3,talk,range]; $x.__enum__ = albero.command.ReloadDataType; $x.toString = $estr; return $x; };
 albero.command.ReloadDataType.AllUsers = function(marker) { var $x = ["AllUsers",4,marker]; $x.__enum__ = albero.command.ReloadDataType; $x.toString = $estr; return $x; };
-albero.command.ReloadDataType.SearchDomainUsers = function(query,marker) { var $x = ["SearchDomainUsers",5,query,marker]; $x.__enum__ = albero.command.ReloadDataType; $x.toString = $estr; return $x; };
-albero.command.ReloadDataType.Announcements = function(range) { var $x = ["Announcements",6,range]; $x.__enum__ = albero.command.ReloadDataType; $x.toString = $estr; return $x; };
-albero.command.ReloadDataType.Questions = function(talk,type,range) { var $x = ["Questions",7,talk,type,range]; $x.__enum__ = albero.command.ReloadDataType; $x.toString = $estr; return $x; };
-albero.command.ReloadDataType.Question = function(msgId,callback) { var $x = ["Question",8,msgId,callback]; $x.__enum__ = albero.command.ReloadDataType; $x.toString = $estr; return $x; };
-albero.command.ReloadDataType.Files = function(talk,range) { var $x = ["Files",9,talk,range]; $x.__enum__ = albero.command.ReloadDataType; $x.toString = $estr; return $x; };
+albero.command.ReloadDataType.GetUsers = function(domainId,userIds) { var $x = ["GetUsers",5,domainId,userIds]; $x.__enum__ = albero.command.ReloadDataType; $x.toString = $estr; return $x; };
+albero.command.ReloadDataType.GetProfile = function(domainId,userId) { var $x = ["GetProfile",6,domainId,userId]; $x.__enum__ = albero.command.ReloadDataType; $x.toString = $estr; return $x; };
+albero.command.ReloadDataType.SearchDomainUsers = function(query,marker) { var $x = ["SearchDomainUsers",7,query,marker]; $x.__enum__ = albero.command.ReloadDataType; $x.toString = $estr; return $x; };
+albero.command.ReloadDataType.Announcements = function(range) { var $x = ["Announcements",8,range]; $x.__enum__ = albero.command.ReloadDataType; $x.toString = $estr; return $x; };
+albero.command.ReloadDataType.Questions = function(talk,type,range) { var $x = ["Questions",9,talk,type,range]; $x.__enum__ = albero.command.ReloadDataType; $x.toString = $estr; return $x; };
+albero.command.ReloadDataType.Question = function(msgId,callback) { var $x = ["Question",10,msgId,callback]; $x.__enum__ = albero.command.ReloadDataType; $x.toString = $estr; return $x; };
+albero.command.ReloadDataType.Files = function(talk,range) { var $x = ["Files",11,talk,range]; $x.__enum__ = albero.command.ReloadDataType; $x.toString = $estr; return $x; };
 albero.command.SelectTalkCommand = function() {
 	albero.command.AutoBindCommand.call(this);
 };
@@ -1015,8 +992,9 @@ albero.command.SignOutCommand.prototype = $extend(albero.command.AutoBindCommand
 	execute: function(notification) {
 		this.api.deleteSession();
 		this.settings.clearInputTextForAll();
-		if(console != null) console.error(AlberoLog.dateStr() + "signout","","","","");
+		if(console != null) console.error(AlberoLog.dateStr(),"signout","","","","");
 		js.Node.process.exit(1);
+		return;
 	}
 	,__class__: albero.command.SignOutCommand
 });
@@ -1040,17 +1018,17 @@ albero.command.TalkCommand.prototype = $extend(albero.command.AutoBindCommand.pr
 			this.api.addTalkers(talk,userIds1);
 			break;
 		case 2:
-			var talkId = action[3];
-			var talk1 = action[2];
+			var talk1 = action[3];
+			var talkId = action[2];
 			if(talk1 == null) talk1 = this.dataStore.getTalk(talkId);
-			this.api.deleteTalker(talk1,this.dataStore.currentUser);
+			this.api.deleteTalker(talk1,this.dataStore.me.id);
 			break;
 		case 3:
 			var iconUrl = action[6];
 			var iconFile = action[5];
 			var name = action[4];
-			var talkId1 = action[3];
-			var talk2 = action[2];
+			var talk2 = action[3];
+			var talkId1 = action[2];
 			if(talk2 == null) talk2 = this.dataStore.getTalk(talkId1);
 			this.api.updateGroupTalk(talk2,name,iconFile,iconUrl);
 			break;
@@ -1061,8 +1039,76 @@ albero.command.TalkCommand.prototype = $extend(albero.command.AutoBindCommand.pr
 albero.command.TalkAction = { __ename__ : true, __constructs__ : ["NEW","ADD","DELETE","UPDATE"] };
 albero.command.TalkAction.NEW = function(userIds) { var $x = ["NEW",0,userIds]; $x.__enum__ = albero.command.TalkAction; $x.toString = $estr; return $x; };
 albero.command.TalkAction.ADD = function(talk,userIds) { var $x = ["ADD",1,talk,userIds]; $x.__enum__ = albero.command.TalkAction; $x.toString = $estr; return $x; };
-albero.command.TalkAction.DELETE = function(talk,talkId) { var $x = ["DELETE",2,talk,talkId]; $x.__enum__ = albero.command.TalkAction; $x.toString = $estr; return $x; };
-albero.command.TalkAction.UPDATE = function(talk,talkId,name,iconFile,iconUrl) { var $x = ["UPDATE",3,talk,talkId,name,iconFile,iconUrl]; $x.__enum__ = albero.command.TalkAction; $x.toString = $estr; return $x; };
+albero.command.TalkAction.DELETE = function(talkId,talk) { var $x = ["DELETE",2,talkId,talk]; $x.__enum__ = albero.command.TalkAction; $x.toString = $estr; return $x; };
+albero.command.TalkAction.UPDATE = function(talkId,talk,name,iconFile,iconUrl) { var $x = ["UPDATE",3,talkId,talk,name,iconFile,iconUrl]; $x.__enum__ = albero.command.TalkAction; $x.toString = $estr; return $x; };
+albero.command.UpdateProfileCommand = function() {
+	albero.command.AutoBindCommand.call(this);
+};
+$hxClasses["albero.command.UpdateProfileCommand"] = albero.command.UpdateProfileCommand;
+albero.command.UpdateProfileCommand.__name__ = ["albero","command","UpdateProfileCommand"];
+albero.command.UpdateProfileCommand.__super__ = albero.command.AutoBindCommand;
+albero.command.UpdateProfileCommand.prototype = $extend(albero.command.AutoBindCommand.prototype,{
+	execute: function(notification) {
+		var domainId = notification.getBody().domainId;
+		var profileItemValues = notification.getBody().profileItemValues;
+		var copyToAllDomains = notification.getBody().copyToAllDomains;
+		var domain = this.dataStore.getDomain(domainId);
+		if(domain == null || domain.profileDefinition.itemDefinitions == null) return;
+		var profileItemValueList = new Array();
+		if(!copyToAllDomains) {
+			var modifiableProfileItemValues = new Array();
+			var iterator = HxOverrides.iter(profileItemValues);
+			var _g = 0;
+			while(_g < profileItemValues.length) {
+				var itemValue = profileItemValues[_g];
+				++_g;
+				var def = albero.entity.ProfileItemDefinition.findById(domain.profileDefinition.itemDefinitions,itemValue.profileItemId);
+				if(def != null && def.visible && !def.locked) modifiableProfileItemValues.push(itemValue);
+			}
+			if(modifiableProfileItemValues.length > 0) profileItemValueList.push({ domainId : domain.id, profileItemValues : modifiableProfileItemValues});
+		} else {
+			var modifiedNameValues = new Array();
+			var _g1 = 0;
+			while(_g1 < profileItemValues.length) {
+				var itemValue1 = profileItemValues[_g1];
+				++_g1;
+				var def1 = albero.entity.ProfileItemDefinition.findById(domain.profileDefinition.itemDefinitions,itemValue1.profileItemId);
+				if(def1 != null) modifiedNameValues.push({ name : def1.name, value : itemValue1.value});
+			}
+			var _g2 = 0;
+			var _g11 = this.dataStore.getDomains();
+			while(_g2 < _g11.length) {
+				var domain1 = _g11[_g2];
+				++_g2;
+				if(domain1.frozen) continue;
+				var modifiedItemValues = new Array();
+				var _g21 = 0;
+				var _g3 = domain1.profileDefinition.itemDefinitions;
+				while(_g21 < _g3.length) {
+					var def2 = _g3[_g21];
+					++_g21;
+					if(!def2.visible) continue;
+					if(def2.locked) continue;
+					var _g4 = 0;
+					while(_g4 < modifiedNameValues.length) {
+						var modifiedNameValue = modifiedNameValues[_g4];
+						++_g4;
+						if(modifiedNameValue.name == def2.name) {
+							var itemValue2 = new albero.entity.ProfileItemValue();
+							itemValue2.profileItemId = def2.profileItemId;
+							itemValue2.value = modifiedNameValue.value;
+							modifiedItemValues.push(itemValue2);
+							break;
+						}
+					}
+				}
+				if(modifiedItemValues.length > 0) profileItemValueList.push({ domainId : domain1.id, profileItemValues : modifiedItemValues});
+			}
+		}
+		if(profileItemValueList.length == 0) this.sendNotification("update_profile_responsed",this.dataStore.me); else this.api.updateProfile(profileItemValueList);
+	}
+	,__class__: albero.command.UpdateProfileCommand
+});
 albero.command.UpdateUserCommand = function() {
 	albero.command.AutoBindCommand.call(this);
 };
@@ -1163,6 +1209,7 @@ albero.entity.Domain = function(props) {
 	this.updatedAt = props.updated_at;
 	this.plan = new albero.entity.Plan(props.plan);
 	this.closed = false;
+	this.profileDefinition = new albero.entity.ProfileDefinition(props.profile_definition);
 };
 $hxClasses["albero.entity.Domain"] = albero.entity.Domain;
 albero.entity.Domain.__name__ = ["albero","entity","Domain"];
@@ -1174,6 +1221,8 @@ albero.entity.DomainRole = function(props) {
 	this.type = this.typeOf(props.type);
 	this.allowReadAnnouncements = props.allow_read_announcements;
 	if(this.allowReadAnnouncements == null) this.allowReadAnnouncements = true;
+	this.allowListUsers = props.allow_list_users;
+	if(this.allowListUsers == null) this.allowListUsers = true;
 };
 $hxClasses["albero.entity.DomainRole"] = albero.entity.DomainRole;
 albero.entity.DomainRole.__name__ = ["albero","entity","DomainRole"];
@@ -1216,6 +1265,43 @@ albero.entity.DomainInvite.__name__ = ["albero","entity","DomainInvite"];
 albero.entity.DomainInvite.prototype = {
 	__class__: albero.entity.DomainInvite
 };
+albero.entity.User = function(props) {
+	if(props == null) return;
+	this.id = props.user_id;
+	this.displayName = props.display_name;
+	this.canonicalDisplayName = props.canonical_display_name;
+	this.phoneticDisplayName = props.phonetic_display_name;
+	this.canonicalPhoneticDisplayName = props.canonical_phonetic_display_name;
+	this.profileImageUrl = props.profile_image_url;
+	this.updatedAt = props.updated_at;
+};
+$hxClasses["albero.entity.User"] = albero.entity.User;
+albero.entity.User.__name__ = ["albero","entity","User"];
+albero.entity.User.prototype = {
+	__class__: albero.entity.User
+};
+albero.entity.DomainUser = function(props) {
+	albero.entity.User.call(this,props);
+	if(props == null) return;
+	this.domainId = props.domain_id;
+	if(props.profile_contact != null) {
+		this.profileContact = new Array();
+		var _g = 0;
+		var _g1;
+		_g1 = js.Boot.__cast(props.profile_contact , Array);
+		while(_g < _g1.length) {
+			var itemValue = _g1[_g];
+			++_g;
+			this.profileContact.push(new albero.entity.ProfileItemValue(itemValue));
+		}
+	}
+};
+$hxClasses["albero.entity.DomainUser"] = albero.entity.DomainUser;
+albero.entity.DomainUser.__name__ = ["albero","entity","DomainUser"];
+albero.entity.DomainUser.__super__ = albero.entity.User;
+albero.entity.DomainUser.prototype = $extend(albero.entity.User.prototype,{
+	__class__: albero.entity.DomainUser
+});
 albero.entity.FileInfo = function(props) {
 	if(props == null) return;
 	this.messageId = props.message_id;
@@ -1247,6 +1333,51 @@ albero.entity.FileInfoDeletion.__name__ = ["albero","entity","FileInfoDeletion"]
 albero.entity.FileInfoDeletion.prototype = {
 	__class__: albero.entity.FileInfoDeletion
 };
+albero.entity.Me = function(props) {
+	albero.entity.User.call(this,props);
+	if(props == null) return;
+	this.email = props.email;
+	if(props.profiles != null) {
+		this.profiles = new Array();
+		var _g = 0;
+		var _g1;
+		_g1 = js.Boot.__cast(props.profiles , Array);
+		while(_g < _g1.length) {
+			var profile = _g1[_g];
+			++_g;
+			this.profiles.push(new albero.entity.Profile(profile));
+		}
+	}
+};
+$hxClasses["albero.entity.Me"] = albero.entity.Me;
+albero.entity.Me.__name__ = ["albero","entity","Me"];
+albero.entity.Me.__super__ = albero.entity.User;
+albero.entity.Me.prototype = $extend(albero.entity.User.prototype,{
+	toDomainUser: function(domainId) {
+		var user = new albero.entity.DomainUser();
+		user.id = this.id;
+		user.domainId = domainId;
+		user.displayName = this.displayName;
+		user.canonicalDisplayName = this.canonicalDisplayName;
+		user.phoneticDisplayName = this.phoneticDisplayName;
+		user.canonicalPhoneticDisplayName = this.canonicalPhoneticDisplayName;
+		user.profileImageUrl = this.profileImageUrl;
+		user.updatedAt = this.updatedAt;
+		user.email = this.email;
+		var _g = 0;
+		var _g1 = this.profiles;
+		while(_g < _g1.length) {
+			var profile = _g1[_g];
+			++_g;
+			if(albero.Int64Helper.eq(profile.domainId,domainId)) {
+				user.profileContact = profile.itemValues;
+				break;
+			}
+		}
+		return user;
+	}
+	,__class__: albero.entity.Me
+});
 albero.entity.Message = function(props) {
 	if(props == null) return;
 	this.id = props.message_id;
@@ -1387,6 +1518,84 @@ albero.entity.Plan.__name__ = ["albero","entity","Plan"];
 albero.entity.Plan.prototype = {
 	__class__: albero.entity.Plan
 };
+albero.entity.Profile = function(props) {
+	if(props == null) return;
+	this.domainId = props.domain_id;
+	this.userId = props.user_id;
+	if(props.item_values != null) {
+		this.itemValues = new Array();
+		var _g = 0;
+		var _g1;
+		_g1 = js.Boot.__cast(props.item_values , Array);
+		while(_g < _g1.length) {
+			var itemValue = _g1[_g];
+			++_g;
+			this.itemValues.push(new albero.entity.ProfileItemValue(itemValue));
+		}
+	}
+};
+$hxClasses["albero.entity.Profile"] = albero.entity.Profile;
+albero.entity.Profile.__name__ = ["albero","entity","Profile"];
+albero.entity.Profile.prototype = {
+	__class__: albero.entity.Profile
+};
+albero.entity.ProfileDefinition = function(props) {
+	if(props == null) return;
+	this.domainId = props.domain_id;
+	if(props.item_definitions != null) {
+		this.itemDefinitions = new Array();
+		var _g = 0;
+		var _g1;
+		_g1 = js.Boot.__cast(props.item_definitions , Array);
+		while(_g < _g1.length) {
+			var itemDef = _g1[_g];
+			++_g;
+			this.itemDefinitions.push(new albero.entity.ProfileItemDefinition(itemDef));
+		}
+	}
+};
+$hxClasses["albero.entity.ProfileDefinition"] = albero.entity.ProfileDefinition;
+albero.entity.ProfileDefinition.__name__ = ["albero","entity","ProfileDefinition"];
+albero.entity.ProfileDefinition.prototype = {
+	__class__: albero.entity.ProfileDefinition
+};
+albero.entity.ProfileItemDefinition = function(props) {
+	this.locked = false;
+	this.visible = true;
+	if(props == null) return;
+	this.profileItemId = props.profile_item_id;
+	this.group = props.group;
+	this.name = props.name;
+	this.valueType = props.value_type;
+	if(props.visible != null) this.visible = props.visible;
+	if(props.locked != null) this.locked = props.locked;
+};
+$hxClasses["albero.entity.ProfileItemDefinition"] = albero.entity.ProfileItemDefinition;
+albero.entity.ProfileItemDefinition.__name__ = ["albero","entity","ProfileItemDefinition"];
+albero.entity.ProfileItemDefinition.findById = function(profileDefs,profileItemId) {
+	var _g = 0;
+	while(_g < profileDefs.length) {
+		var defs = profileDefs[_g];
+		++_g;
+		if(defs.profileItemId == profileItemId) return defs;
+	}
+	return null;
+};
+albero.entity.ProfileItemDefinition.prototype = {
+	__class__: albero.entity.ProfileItemDefinition
+};
+albero.entity.ProfileItemValue = function(props) {
+	if(props == null) return;
+	this.profileItemId = props.profile_item_id;
+	this.value = props.value;
+	this.canonicalValue = props.canonical_value;
+	if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr(),"ProfileItemValue unmarshalize. profileItemId:",this.profileItemId,", value:",this.value,"");
+};
+$hxClasses["albero.entity.ProfileItemValue"] = albero.entity.ProfileItemValue;
+albero.entity.ProfileItemValue.__name__ = ["albero","entity","ProfileItemValue"];
+albero.entity.ProfileItemValue.prototype = {
+	__class__: albero.entity.ProfileItemValue
+};
 albero.entity.Question = function(props) {
 	if(props == null) return;
 	this.id = props.message_id;
@@ -1396,6 +1605,7 @@ albero.entity.Question = function(props) {
 	this.userId = props.user_id;
 	this.recipientIds = props.assigned_user_ids;
 	this.responses = this.createResponses(props.responses);
+	this.listing = props.listing;
 	this.closingType = albero.entity.Question.typeOf(props.closing_type);
 	this.maxResponseId = props.max_response_id;
 	this.lastResponse = props.last_response;
@@ -1452,6 +1662,9 @@ albero.entity.QuestionClosingType.all.__enum__ = albero.entity.QuestionClosingTy
 albero.entity.QuestionClosingType.unknown = ["unknown",2];
 albero.entity.QuestionClosingType.unknown.toString = $estr;
 albero.entity.QuestionClosingType.unknown.__enum__ = albero.entity.QuestionClosingType;
+albero.entity.StampSet = function() { };
+$hxClasses["albero.entity.StampSet"] = albero.entity.StampSet;
+albero.entity.StampSet.__name__ = ["albero","entity","StampSet"];
 albero.entity.Talk = function(props) {
 	if(props == null) return;
 	this.id = props.talk_id;
@@ -1484,7 +1697,7 @@ albero.entity.Talk.prototype = {
 		while(_g < objs.length) {
 			var obj = objs[_g];
 			++_g;
-			users.push(new albero.entity.User(obj));
+			users.push(new albero.entity.DomainUser(obj));
 		}
 		return users;
 	}
@@ -1506,7 +1719,7 @@ albero.entity.TalkStatus = function(props) {
 	this.id = props.talk_id;
 	if(props.unread_count != null) this.unreadCount = props.unread_count; else this.unreadCount = 0;
 	this.maxMessageId = props.max_message_id;
-	this.maxMessage = new albero.entity.Message(props.max_message);
+	if(props.max_message != null) this.maxMessage = new albero.entity.Message(props.max_message); else this.maxMessage = null;
 	this.maxReadMessageId = props.max_read_message_id;
 	this.maxEveryoneReadMessageId = props.max_everyone_read_message_id;
 };
@@ -1524,27 +1737,6 @@ $hxClasses["albero.entity.TalkStatusUpdate"] = albero.entity.TalkStatusUpdate;
 albero.entity.TalkStatusUpdate.__name__ = ["albero","entity","TalkStatusUpdate"];
 albero.entity.TalkStatusUpdate.prototype = {
 	__class__: albero.entity.TalkStatusUpdate
-};
-albero.entity.User = function(props) {
-	if(props == null) return;
-	this.id = props.user_id;
-	this.email = props.email;
-	this.displayName = props.display_name;
-	this.canonicalDisplayName = props.canonical_display_name;
-	this.phoneticDisplayName = props.phonetic_display_name;
-	this.canonicalPhoneticDisplayName = props.canonical_phonetic_display_name;
-	this.profileImageUrl = props.profile_image_url;
-	this.updatedAt = props.updated_at;
-};
-$hxClasses["albero.entity.User"] = albero.entity.User;
-albero.entity.User.__name__ = ["albero","entity","User"];
-albero.entity.User.prototype = {
-	getName: function(htmlEscape) {
-		if(htmlEscape == null) htmlEscape = true;
-		if(this.displayName != null) if(htmlEscape) return StringTools.htmlEscape(this.displayName,true); else return this.displayName;
-		return this.email;
-	}
-	,__class__: albero.entity.User
 };
 var AlberoLog = $hx_exports.AlberoLog = function() { };
 $hxClasses["AlberoLog"] = AlberoLog;
@@ -1587,7 +1779,7 @@ $hxClasses["albero.js.WebSocket"] = albero.js.WebSocket;
 albero.js.WebSocket.__name__ = ["albero","js","WebSocket"];
 albero.js.WebSocket.prototype = {
 	onOpen: function(event) {
-		if(console != null) console.info(AlberoLog.dateStr() + "WebSocket opened.","","","","");
+		if(console != null) console.info(AlberoLog.dateStr(),"WebSocket opened.","","","","");
 		if(this.onopen != null) this.onopen();
 	}
 	,onMessage: function(event) {
@@ -1599,13 +1791,13 @@ albero.js.WebSocket.prototype = {
 		}
 	}
 	,onError: function(event) {
-		if(console != null) console.error(AlberoLog.dateStr() + "WebSocket error. event:",event,"","","");
+		if(console != null) console.error(AlberoLog.dateStr(),"WebSocket error. event:",event,"","","");
 		if(this.onerror != null) this.onerror();
 	}
 	,onClose: function(event) {
 		this.ws = null;
 		this.connection = null;
-		if(console != null) console.info(AlberoLog.dateStr() + "WebSocket closed. event:%s reason:%s wasClean:%s",event.code,event.reason,event.wasClean,"");
+		if(console != null) console.info(AlberoLog.dateStr(),"WebSocket closed. event:%s reason:%s wasClean:%s",event.code,event.reason,event.wasClean,"");
 		if(this.onclose != null) this.onclose(event.code,event.reason,event.wasClean);
 	}
 	,onConnectionClose: function(code,reason) {
@@ -1695,53 +1887,90 @@ albero.proxy.AlberoBroadcastProxy.__name__ = ["albero","proxy","AlberoBroadcastP
 albero.proxy.AlberoBroadcastProxy.__super__ = puremvc.patterns.proxy.Proxy;
 albero.proxy.AlberoBroadcastProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.prototype,{
 	handleNotification: function(name,body,callback) {
-		if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr() + "Receive request from server. name:",name," body:",body,"");
-		var obj = this.convertObject(name,body);
-		var callbackSoon = this.preNotification(name,obj,callback);
-		this.sendNotification(name,obj);
-		if(callbackSoon) callback();
-	}
-	,preNotification: function(name,obj,callback) {
 		var _g1 = this;
-		var callbackSoon = true;
+		if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr(),"Receive request from server. name:",name," body:",body,"");
 		switch(name) {
-		case "notify_leave_domain":
-			var domainId = obj;
-			this.dataStore.removeDomain(domainId);
-			break;
-		case "notify_delete_domain_invite":
-			var domainId1 = obj;
-			this.dataStore.removeDomainInvite(domainId1);
+		case "notify_update_user":
+			if((body instanceof Array) && body.__enum__ == null) {
+				var user = new albero.entity.DomainUser(body[1]);
+				this.dataStore.setUserIfLatest(null,user);
+			} else {
+				var me = new albero.entity.Me(body);
+				if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr(),"Current user updated. user:",me,"","","");
+				this.dataStore.setMe(me);
+			}
+			callback();
 			break;
 		case "notify_add_friend":
-			this.dataStore.addFriend(obj[0],obj[1]);
-			break;
-		case "notify_delete_friend":
-			this.dataStore.removeFriend(obj[0],obj[1]);
+			var user1 = new albero.entity.DomainUser(body[1]);
+			this.dataStore.addFriend(user1);
+			this.sendNotification(name,user1);
+			callback();
 			break;
 		case "notify_add_acquaintance":
-			this.dataStore.addAcquaintance(obj[0],obj[1]);
+			var user2 = new albero.entity.DomainUser(body[1]);
+			this.dataStore.addAcquaintance(user2);
+			this.sendNotification(name,user2);
+			callback();
 			break;
-		case "notify_delete_acquaintance":
-			this.dataStore.removeAcquaintance(obj[0],obj[1]);
+		case "notify_join_domain":
+			var newDomain = new albero.entity.Domain(body);
+			this.dataStore.setDomain(newDomain);
+			this.sendNotification(name,[null,newDomain]);
+			callback();
+			break;
+		case "notify_update_domain":
+			var newDomain1 = new albero.entity.Domain(body);
+			var oldDomain = this.dataStore.getDomain(newDomain1.id);
+			this.dataStore.setDomain(newDomain1);
+			if(oldDomain != null) {
+				if(oldDomain.role.allowReadAnnouncements && !newDomain1.role.allowReadAnnouncements) {
+					this.dataStore.removeAnnouncementStatus(oldDomain.id);
+					var status = new albero.entity.AnnouncementStatus();
+					status.domainId = newDomain1.id;
+					this.sendNotification("notify_update_announcement_status",status);
+				}
+			}
+			this.sendNotification(name,[oldDomain,newDomain1]);
+			callback();
+			break;
+		case "notify_add_domain_invite":
+			var domainInvite = new albero.entity.DomainInvite(body);
+			this.dataStore.setDomainInvite(domainInvite);
+			this.sendNotification(name,domainInvite);
+			callback();
+			break;
+		case "notify_create_pair_talk":case "notify_create_group_talk":case "notify_update_group_talk":case "notify_add_talkers":case "notify_delete_talker":
+			var talk = new albero.entity.Talk(body);
+			this.dataStore.setTalk(talk);
+			this.sendNotification(name,talk);
+			callback();
 			break;
 		case "notify_create_message":
-			var msg = obj;
+			var msg = new albero.entity.Message(body);
+			var talkStatus = this.newTalkStatusByMessage(msg);
+			if(talkStatus != null) this.sendNotification("notify_update_local_talk_status",talkStatus);
 			var _g = msg.type;
 			switch(_g[1]) {
 			case 12:
 				this.sendNotification("phone_call_connected",msg.content);
+				this.sendNotification(name,msg);
+				callback();
 				break;
 			case 5:case 7:case 9:
-				callbackSoon = false;
 				haxe.Timer.delay(function() {
-					_g1.sendNotification("ReloadData",albero.command.ReloadDataType.Question(msg.id,callback));
+					_g1.sendNotification("ReloadData",albero.command.ReloadDataType.Question(msg.id,function() {
+						_g1.sendNotification(name,msg);
+						callback();
+					}));
 				},500);
 				break;
 			case 6:case 8:case 10:
-				callbackSoon = false;
 				haxe.Timer.delay(function() {
-					_g1.sendNotification("ReloadData",albero.command.ReloadDataType.Question(msg.content.in_reply_to,callback));
+					_g1.sendNotification("ReloadData",albero.command.ReloadDataType.Question(msg.content.in_reply_to,function() {
+						_g1.sendNotification(name,msg);
+						callback();
+					}));
 				},500);
 				break;
 			case 4:
@@ -1758,118 +1987,88 @@ albero.proxy.AlberoBroadcastProxy.prototype = $extend(puremvc.patterns.proxy.Pro
 					file.url = msg.content.url;
 					this.sendNotification("notify_create_attachment",file);
 				}
+				this.sendNotification(name,msg);
+				callback();
 				break;
 			default:
+				this.sendNotification(name,msg);
+				callback();
 			}
-			var talkStatus = this.newTalkStatusByMessage(msg);
-			if(talkStatus != null) this.sendNotification("notify_update_local_talk_status",talkStatus);
 			break;
 		case "notify_update_read_statuses":
-			var status = obj;
-			var talkStatus1 = this.updateTalkStatus(status);
+			var status1 = new albero.entity.MessageReadStatusesUpdate(body);
+			var talkStatus1 = this.updateTalkStatus(status1);
 			if(talkStatus1 != null) this.sendNotification("notify_update_local_talk_status",talkStatus1);
-			break;
-		case "notify_update_announcement_status":
-			var status1 = obj;
-			var currentStatus = this.dataStore.getAnnouncementStatus(status1.domainId);
-			if(currentStatus == null) this.dataStore.setAnnouncementStatus(status1); else if(currentStatus.maxReadAnnouncementId == null || haxe.Int64.compare(currentStatus.maxReadAnnouncementId,status1.maxReadAnnouncementId) < 0) this.dataStore.setAnnouncementStatus(status1); else {
-				if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr() + "notified announcement status is older than current status. notified:%o, current:%o",status1,currentStatus,"","");
-				status1.maxReadAnnouncementId = currentStatus.maxReadAnnouncementId;
-				status1.maxAnnouncementId = currentStatus.maxAnnouncementId;
-				status1.unreadCount = currentStatus.unreadCount;
-			}
+			this.sendNotification(name,status1);
+			callback();
 			break;
 		case "notify_update_talk_status":
-			var statusUpdate = obj;
+			var statusUpdate = new albero.entity.TalkStatusUpdate(body);
 			var status2 = this.dataStore.getTalkStatus(statusUpdate.talkId);
 			if(status2 != null && (status2.maxEveryoneReadMessageId == null || haxe.Int64.compare(status2.maxEveryoneReadMessageId,statusUpdate.maxEveryoneReadMessageId) < 0)) {
 				status2.maxEveryoneReadMessageId = statusUpdate.maxEveryoneReadMessageId;
 				this.dataStore.setTalkStatus(status2);
 				this.sendNotification("notify_update_local_talk_status",status2);
 			}
-			break;
-		case "notify_delete_talk":
-			this.dataStore.removeTalk(obj);
-			this.dataStore.removeTalkStatus(obj);
-			this.sendNotification("SelectTalk",null);
+			this.sendNotification(name,statusUpdate);
+			callback();
 			break;
 		case "notify_create_announcement":
-			var announce = obj;
+			var announce = new albero.entity.Announcement(body);
 			this.sendNotification("notify_update_announcement_status",this.newAnnouncementStatus(announce));
-			break;
-		case "notify_update_domain":
-			var oldDomain = obj[0];
-			var newDomain = obj[1];
-			if(oldDomain != null) {
-				if(oldDomain.role.allowReadAnnouncements && !newDomain.role.allowReadAnnouncements) {
-					this.dataStore.removeAnnouncementStatus(obj[1].id);
-					var status3 = new albero.entity.AnnouncementStatus();
-					status3.domainId = newDomain.id;
-					this.sendNotification("notify_update_announcement_status",status3);
-				}
-			}
-			break;
-		}
-		return callbackSoon;
-	}
-	,convertObject: function(name,obj) {
-		switch(name) {
-		case "notify_update_user":
-			if((obj instanceof Array) && obj.__enum__ == null) obj[1] = this.newUser(obj[1]); else {
-				var user = this.newUser(obj);
-				if(albero.Int64Helper.eq(user.id,this.dataStore.currentUser.id)) {
-					if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr() + "Current user updated. user:",user,"","","");
-					this.dataStore.setCurrentUser(user);
-				}
-				obj = [this.settings.getSelectedDomainId(),user];
-			}
-			break;
-		case "notify_add_friend":case "notify_add_acquaintance":
-			obj[1] = this.newUser(obj[1]);
-			break;
-		case "notify_join_domain":case "notify_update_domain":
-			var newDomain = new albero.entity.Domain(obj);
-			var oldDomain = this.dataStore.getDomain(newDomain.id);
-			this.dataStore.setDomain(newDomain);
-			obj = [oldDomain,newDomain];
-			break;
-		case "notify_add_domain_invite":
-			obj = this.newDomainInvite(obj);
-			break;
-		case "notify_create_pair_talk":case "notify_create_group_talk":case "notify_update_group_talk":case "notify_add_talkers":case "notify_delete_talker":
-			obj = this.newTalk(obj);
-			break;
-		case "notify_create_message":
-			obj = this.newMessage(obj);
-			break;
-		case "notify_update_read_statuses":
-			obj = this.newMessageReadStatusesUpdate(obj);
-			break;
-		case "notify_update_talk_status":
-			obj = this.newTalkStatusUpdate(obj);
-			break;
-		case "notify_create_announcement":
-			obj = new albero.entity.Announcement(obj);
+			this.sendNotification(name,announce);
+			callback();
 			break;
 		case "notify_update_announcement_status":
-			obj = new albero.entity.AnnouncementStatus(obj);
+			var status3 = new albero.entity.AnnouncementStatus(body);
+			var currentStatus = this.dataStore.getAnnouncementStatus(status3.domainId);
+			if(currentStatus == null) this.dataStore.setAnnouncementStatus(status3); else if(currentStatus.maxReadAnnouncementId == null || haxe.Int64.compare(currentStatus.maxReadAnnouncementId,status3.maxReadAnnouncementId) < 0) this.dataStore.setAnnouncementStatus(status3); else {
+				if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr(),"notified announcement status is older than current status. notified:%o, current:%o",status3,currentStatus,"","");
+				status3.maxReadAnnouncementId = currentStatus.maxReadAnnouncementId;
+				status3.maxAnnouncementId = currentStatus.maxAnnouncementId;
+				status3.unreadCount = currentStatus.unreadCount;
+			}
+			this.sendNotification(name,status3);
+			callback();
 			break;
 		case "notify_delete_attachment":
-			obj = new albero.entity.FileInfoDeletion(obj);
+			var deletion = new albero.entity.FileInfoDeletion(body);
+			this.sendNotification(name,deletion);
+			callback();
+			break;
+		case "notify_leave_domain":
+			var domainId = body;
+			this.dataStore.removeDomain(domainId);
+			this.sendNotification(name,domainId);
+			callback();
+			break;
+		case "notify_delete_domain_invite":
+			var domainId1 = body;
+			this.dataStore.removeDomainInvite(domainId1);
+			this.sendNotification(name,domainId1);
+			callback();
+			break;
+		case "notify_delete_friend":
+			this.dataStore.removeFriend(body[0],body[1]);
+			this.sendNotification(name,body);
+			callback();
+			break;
+		case "notify_delete_acquaintance":
+			this.dataStore.removeAcquaintance(body[0],body[1]);
+			this.sendNotification(name,body);
+			callback();
+			break;
+		case "notify_delete_talk":
+			this.dataStore.removeTalk(body);
+			this.dataStore.removeTalkStatus(body);
+			this.sendNotification("SelectTalk",null);
+			this.sendNotification(name,body);
+			callback();
 			break;
 		default:
-			if(console != null) console.warn(AlberoLog.dateStr() + "Unknown method. name:",name," obj:",obj,"");
+			this.sendNotification(name,body);
+			callback();
 		}
-		return obj;
-	}
-	,newDomainInvite: function(obj) {
-		return this.dataStore.setDomainInvite(new albero.entity.DomainInvite(obj));
-	}
-	,newUser: function(obj) {
-		return this.dataStore.setUser(new albero.entity.User(obj));
-	}
-	,newTalk: function(obj) {
-		return this.dataStore.setTalk(new albero.entity.Talk(obj));
 	}
 	,newTalkStatusByMessage: function(msg) {
 		var status = this.dataStore.getTalkStatus(msg.talkId);
@@ -1881,7 +2080,7 @@ albero.proxy.AlberoBroadcastProxy.prototype = $extend(puremvc.patterns.proxy.Pro
 			status.maxMessageId = msg.id;
 			status.maxMessage = msg;
 		}
-		if(!this.dataStore.isCurrentUser(msg.userId)) status.unreadCount++;
+		if(!this.dataStore.isMe(msg.userId)) status.unreadCount++;
 		this.dataStore.setTalkStatus(status);
 		return status;
 	}
@@ -1891,7 +2090,7 @@ albero.proxy.AlberoBroadcastProxy.prototype = $extend(puremvc.patterns.proxy.Pro
 		while(_g < _g1.length) {
 			var userId = _g1[_g];
 			++_g;
-			if(this.dataStore.isCurrentUser(userId)) {
+			if(this.dataStore.isMe(userId)) {
 				var talkStatus = this.dataStore.getTalkStatus(msgStatuses.talkId);
 				var maxMessageId = msgStatuses.messageIds[0];
 				var _g2 = 0;
@@ -1912,15 +2111,6 @@ albero.proxy.AlberoBroadcastProxy.prototype = $extend(puremvc.patterns.proxy.Pro
 			}
 		}
 		return null;
-	}
-	,newMessage: function(obj) {
-		return new albero.entity.Message(obj);
-	}
-	,newMessageReadStatusesUpdate: function(obj) {
-		return new albero.entity.MessageReadStatusesUpdate(obj);
-	}
-	,newTalkStatusUpdate: function(obj) {
-		return new albero.entity.TalkStatusUpdate(obj);
 	}
 	,newAnnouncementStatus: function(announce) {
 		var status = this.dataStore.getAnnouncementStatus(announce.domainId);
@@ -1952,7 +2142,7 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 		type = "bot";
 		var idfv = "";
 		this.rpc.call("create_access_token",[email,password,idfv,type,""],function(accessToken) {
-			if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr() + Std.string("access token:" + accessToken),"","","","");
+			if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr(),"access token:" + accessToken,"","","","");
 			_g.settings.setAccessToken(accessToken);
 			_g.createSession(accessToken);
 		},function(error) {
@@ -1961,16 +2151,16 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 	}
 	,createSession: function(accessToken) {
 		var _g = this;
-		this.rpc.call("create_session",[accessToken,"1.31"],function(map) {
-			_g.dataStore.setCurrentUser(_g.newUser(map.user));
+		this.rpc.call("create_session",[accessToken,"1.35"],function(map) {
+			_g.dataStore.setMe(new albero.entity.Me(map.user));
 			_g.settings.setConfiguration(new albero.entity.Configuration(map.configuration));
 			var callback = function() {
 				_g.dataRecoverd = true;
 				var expired = map.configuration.bot_expired_version;
-				if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr() + "bot_expired_version",expired,"","","");
+				if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr(),"bot_expired_version",expired,"","","");
 				if(expired != null) {
 					var current = js.Node.require("../../package.json").version;
-					if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr() + "current",current,"","","");
+					if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr(),"current",current,"","","");
 					if(current != null) {
 						var abc = expired.split(".");
 						var xyz = current.split(".");
@@ -1981,7 +2171,7 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 				_g.rpc.call("start_notification",[],function(data) {
 					var succeed = data;
 					if(!succeed) {
-						if(console != null) console.error(AlberoLog.dateStr() + "start_notification failed.","","","","");
+						if(console != null) console.error(AlberoLog.dateStr(),"start_notification failed.","","","","");
 						js.Node.process.exit(1);
 					}
 				});
@@ -2002,15 +2192,14 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 			var completeCount = 0;
 			var callbackIfAllFunctionFinished = function() {
 				completeCount++;
-				if(completeCount < 6) return;
-				_g.getAllUserEmails(callback);
+				if(completeCount == 4) _g.getAllUserEmails(callback);
 			};
 			_g.getDomains(function() {
 				var domains = _g.dataStore.getDomains();
 				var gotAnnouncementStatusCount = 0;
 				var callbackIfGotAllAnnouncementStatuses = function() {
 					gotAnnouncementStatusCount++;
-					if(gotAnnouncementStatusCount >= domains.length) callbackIfAllFunctionFinished();
+					if(gotAnnouncementStatusCount == domains.length) callbackIfAllFunctionFinished();
 				};
 				if(domains.length > 0) {
 					var _g1 = 0;
@@ -2020,12 +2209,18 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 						_g.getAnnouncementStatuses(domain.id,callbackIfGotAllAnnouncementStatuses);
 					}
 				} else callbackIfAllFunctionFinished();
+				var gotUsersCount = 0;
+				var callbackIfGotUsers = function() {
+					gotUsersCount++;
+					if(gotUsersCount == 2) {
+						_g.getTalks(callbackIfAllFunctionFinished);
+						_g.getTalkInvites(callbackIfAllFunctionFinished);
+					}
+				};
+				_g.getFriends(callbackIfGotUsers);
+				_g.getAcquaintances(callbackIfGotUsers);
 			});
 			_g.getDomainInvites(callbackIfAllFunctionFinished);
-			_g.getFriends(callbackIfAllFunctionFinished);
-			_g.getAcquaintances(callbackIfAllFunctionFinished);
-			_g.getTalks(callbackIfAllFunctionFinished);
-			_g.getTalkInvites(callbackIfAllFunctionFinished);
 		});
 	}
 	,deleteSession: function() {
@@ -2037,29 +2232,46 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 	,updateUser: function(displayName,profileImage,profileImageUrl,phoneticDisplayName) {
 		var _g = this;
 		var updateUserName = function(profileUrl) {
-			_g.rpc.call("update_user",[displayName,profileUrl,phoneticDisplayName],function(map) {
-				_g.dataStore.setCurrentUser(_g.newUser(map));
+			_g.rpc.call("update_user",[displayName,profileUrl,phoneticDisplayName],function(props) {
+				_g.sendNotification("update_user_responsed",new albero.entity.Me(props));
 			});
 		};
 		if(profileImageUrl != null) updateUserName(profileImageUrl); else if(profileImage != null) this.uploadFile(profileImage,null,albero.proxy._AlberoServiceProxy.UploadUseType.PROFILE_IMAGE,function(auth) {
 			updateUserName(auth.get_url);
 		}); else updateUserName();
 	}
-	,addFriend: function(friend) {
+	,updateProfile: function(domainProfileItemValues) {
 		var _g = this;
-		var domainId = this.settings.getSelectedDomainId();
-		this.rpc.call("add_friend",[domainId,friend.id],function(r) {
-			r[1] = _g.newFriend(r[0],r[1]);
-			_g.sendNotification("notify_add_friend",r);
+		var array = new Array();
+		var _g1 = 0;
+		while(_g1 < domainProfileItemValues.length) {
+			var domainItemValue = domainProfileItemValues[_g1];
+			++_g1;
+			var content = new Array();
+			content.push(domainItemValue.domainId);
+			var itemValueArray = new Array();
+			var _g11 = 0;
+			var _g2 = domainItemValue.profileItemValues;
+			while(_g11 < _g2.length) {
+				var itemValue = _g2[_g11];
+				++_g11;
+				itemValueArray.push({ profile_item_id : itemValue.profileItemId, value : itemValue.value});
+			}
+			content.push(itemValueArray);
+			array.push(content);
+		}
+		this.rpc.call("update_profile",[array],function(me) {
+			if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr(),"update_profile_succeed",me,"","","");
+			_g.sendNotification("update_profile_responsed",me);
 		});
 	}
-	,deleteFriend: function(friend) {
-		var _g = this;
+	,addFriend: function(friend) {
 		var domainId = this.settings.getSelectedDomainId();
-		this.rpc.call("delete_friend",[domainId,friend.id],function(r) {
-			_g.dataStore.removeFriend(r[0],r[1]);
-			_g.sendNotification("delete_friend",r);
-		});
+		this.rpc.call("add_friend",[domainId,friend.id]);
+	}
+	,deleteFriend: function(friend) {
+		var domainId = this.settings.getSelectedDomainId();
+		this.rpc.call("delete_friend",[domainId,friend.id]);
 	}
 	,getFriends: function(callback) {
 		var _g2 = this;
@@ -2068,15 +2280,14 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 			while(_g < array.length) {
 				var row = array[_g];
 				++_g;
-				var domainId = row[0];
 				var users = row[1];
 				var _g1 = 0;
 				while(_g1 < users.length) {
 					var u = users[_g1];
 					++_g1;
-					var user = _g2.newFriend(domainId,u);
-					_g2.sendNotification("notify_add_friend",[domainId,user]);
-					_g2.sendNotification("notify_update_user",[domainId,user]);
+					var user = new albero.entity.DomainUser(u);
+					_g2.dataStore.addFriend(user);
+					_g2.sendNotification("notify_add_friend",user);
 				}
 			}
 			if(callback != null) callback();
@@ -2089,52 +2300,78 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 			while(_g < array.length) {
 				var row = array[_g];
 				++_g;
-				var domainId = row[0];
 				var users = row[1];
 				var _g1 = 0;
 				while(_g1 < users.length) {
 					var u = users[_g1];
 					++_g1;
-					var user = _g2.newAcquaintance(domainId,u);
-					_g2.sendNotification("notify_add_acquaintance",[domainId,user]);
-					_g2.sendNotification("notify_update_user",[domainId,user]);
+					var user = new albero.entity.DomainUser(u);
+					_g2.dataStore.addAcquaintance(user);
+					_g2.sendNotification("notify_add_acquaintance",user);
 				}
 			}
 			if(callback != null) callback();
 		});
 	}
 	,getAllUsers: function(marker) {
-		var _g1 = this;
+		var _g = this;
 		var domainId = this.settings.getSelectedDomainId();
 		var maxCount = 40;
 		var targets = 14;
 		this.rpc.call("get_domain_users",[domainId,targets,maxCount,marker],function(result) {
 			var users = new Array();
-			var usersArray = result.contents;
-			var _g = 0;
-			while(_g < usersArray.length) {
-				var map = usersArray[_g];
-				++_g;
-				users.push(_g1.newUser(map));
+			var _g1 = 0;
+			var _g11;
+			_g11 = js.Boot.__cast(result.contents , Array);
+			while(_g1 < _g11.length) {
+				var map = _g11[_g1];
+				++_g1;
+				users.push(new albero.entity.DomainUser(map));
 			}
-			_g1.sendNotification("get_users_responsed",[domainId,result.marker,result.next_marker,users]);
+			_g.dataStore.setUsersIfLatest(domainId,users);
+			_g.sendNotification("get_domain_users_responsed",[domainId,result.marker,result.next_marker,users]);
+		});
+	}
+	,getUsers: function(domainId,userIds) {
+		var _g = this;
+		this.rpc.call("get_users",[domainId,userIds],function(result) {
+			var users = new Array();
+			var _g1 = 0;
+			var _g11;
+			_g11 = js.Boot.__cast(result , Array);
+			while(_g1 < _g11.length) {
+				var map = _g11[_g1];
+				++_g1;
+				users.push(new albero.entity.DomainUser(map));
+			}
+			_g.dataStore.setUsersIfLatest(domainId,users);
+			_g.sendNotification("get_users_responsed",[domainId,users]);
+		});
+	}
+	,getProfile: function(domainId,userId) {
+		var _g = this;
+		this.rpc.call("get_profile",[domainId,userId],function(result) {
+			var profile = new albero.entity.Profile(result);
+			_g.sendNotification("get_profile_responsed",profile);
 		});
 	}
 	,searchDomainUsers: function(query,marker) {
-		var _g1 = this;
+		var _g = this;
 		var domainId = this.settings.getSelectedDomainId();
 		var maxCount = 40;
 		var targets = 14;
 		this.rpc.call("search_domain_users",[domainId,query,targets,maxCount,marker],function(result) {
 			var users = new Array();
-			var usersArray = result.contents;
-			var _g = 0;
-			while(_g < usersArray.length) {
-				var map = usersArray[_g];
-				++_g;
-				users.push(_g1.newUser(map));
+			var _g1 = 0;
+			var _g11;
+			_g11 = js.Boot.__cast(result.contents , Array);
+			while(_g1 < _g11.length) {
+				var map = _g11[_g1];
+				++_g1;
+				users.push(new albero.entity.DomainUser(map));
 			}
-			_g1.sendNotification("get_users_responsed",[domainId,result.marker,result.next_marker,users,query]);
+			_g.dataStore.setUsersIfLatest(domainId,users);
+			_g.sendNotification("get_domain_users_responsed",[domainId,result.marker,result.next_marker,users,query]);
 		});
 	}
 	,getUserEmails: function(domainId,userIds,callback) {
@@ -2144,7 +2381,7 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 			var _g = userIds.length;
 			while(_g1 < _g) {
 				var i = _g1++;
-				var user = _g2.dataStore.getUser(userIds[i]);
+				var user = _g2.dataStore.getUser(domainId,userIds[i]);
 				if(user != null) user.email = result[i];
 			}
 			if(callback != null) callback();
@@ -2153,35 +2390,20 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 	,getAllUserEmails: function(callback) {
 		var _g = this;
 		var userIds = null;
-		var findDomainId = function(userId) {
-			var _g1 = 0;
-			var _g2 = _g.dataStore.getDomains();
-			while(_g1 < _g2.length) {
-				var domain = _g2[_g1];
-				++_g1;
-				if(_g.dataStore.isFriendOrAcquaintance(domain.id,userId)) return albero.Int64Helper.idStr(domain.id);
-			}
-			return null;
-		};
-		var $it0 = (function($this) {
-			var $r;
-			var this1 = $this.dataStore.getUsermap();
-			$r = this1.iterator();
-			return $r;
-		}(this));
-		while( $it0.hasNext() ) {
-			var user = $it0.next();
+		var _g1 = 0;
+		var _g11 = this.dataStore.getUsers();
+		while(_g1 < _g11.length) {
+			var user = _g11[_g1];
+			++_g1;
 			if(user.email == null) {
-				var domainIdStr = findDomainId(user.id);
-				if(domainIdStr != null) {
-					if(userIds == null) userIds = new haxe.ds.StringMap();
-					var ids = userIds.get(domainIdStr);
-					if(ids == null) {
-						ids = new Array();
-						userIds.set(domainIdStr,ids);
-					}
-					ids.push(user.id);
+				var domainIdStr = albero.Int64Helper.idStr(user.domainId);
+				if(userIds == null) userIds = new haxe.ds.StringMap();
+				var ids = userIds.get(domainIdStr);
+				if(ids == null) {
+					ids = new Array();
+					userIds.set(domainIdStr,ids);
 				}
+				ids.push(user.id);
 			}
 		}
 		if(userIds == null) callback(); else {
@@ -2330,6 +2552,7 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 		if(talk.type != albero.entity.TalkType.GroupTalk) return;
 		var _updateGroupTalk = function(iconUrl1) {
 			_g.rpc.call("update_group_talk",[talk.id,name,iconUrl1],function(map) {
+				_g.sendNotification("notify_update_group_talk",_g.newTalk(map));
 			});
 		};
 		if(iconUrl != null) _updateGroupTalk(iconUrl); else if(iconFile != null) this.uploadFile(iconFile,talk.domainId,albero.proxy._AlberoServiceProxy.UploadUseType.TALK_ICON,function(auth) {
@@ -2340,7 +2563,7 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 		var _g = this;
 		if(talk.type == albero.entity.TalkType.PairTalk) {
 			var userIds1 = talk.userIds.concat(userIds);
-			albero.Int64Helper.remove(userIds1,this.dataStore.currentUser.id);
+			albero.Int64Helper.remove(userIds1,this.dataStore.me.id);
 			this.createTalk(userIds1);
 			return;
 		}
@@ -2349,10 +2572,10 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 			_g.sendNotification("notify_add_talkers",_g.newTalk(talk1));
 		});
 	}
-	,deleteTalker: function(talk,user) {
+	,deleteTalker: function(talk,userId) {
 		var _g = this;
-		this.rpc.call("delete_talker",[talk.id,user.id],function(_) {
-			albero.Int64Helper.remove(talk.userIds,user.id);
+		this.rpc.call("delete_talker",[talk.id,userId],function(_) {
+			albero.Int64Helper.remove(talk.userIds,userId);
 			_g.sendNotification("notify_delete_talker",_g.dataStore.setTalk(talk));
 		});
 	}
@@ -2415,7 +2638,8 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 		if(timer != null) timer.stop();
 		timer = haxe.Timer.delay(function() {
 			_g.updateReadStatusesTimers.remove(talkIdStr);
-			if(_g.dataStore.getTalkStatus(talkId) == null) return;
+			var status1 = _g.dataStore.getTalkStatus(talkId);
+			if(status1 == null) return;
 			_g.rpc.call("update_read_statuses",[talkId,maxMsgId],function(_) {
 			});
 		},1000);
@@ -2555,7 +2779,7 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 		if(type != null) typeIdx = albero.entity.Message.enumIndex(type);
 		if(range == null) range = { sinceId : null, maxId : null};
 		console.log("get_questions_request. domainId:" + Std.string(domainId) + " sinceId:" + Std.string(range.sinceId) + " maxId:" + Std.string(range.maxId));
-		this.rpc.call("get_questions",[domainId,talkId,typeIdx,count,range.sinceId,range.maxId],function(result) {
+		this.rpc.call("get_questions",[domainId,talkId,typeIdx,count,range.sinceId,range.maxId,true],function(result) {
 			var questions = new Array();
 			var _g = 0;
 			while(_g < result.length) {
@@ -2580,15 +2804,6 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 	,newDomainInvite: function(obj) {
 		return this.dataStore.setDomainInvite(new albero.entity.DomainInvite(obj));
 	}
-	,newFriend: function(domainId,obj) {
-		return this.dataStore.addFriend(domainId,this.newUser(obj));
-	}
-	,newAcquaintance: function(domainId,obj) {
-		return this.dataStore.addAcquaintance(domainId,this.newUser(obj));
-	}
-	,newUser: function(obj) {
-		return this.dataStore.setUser(new albero.entity.User(obj));
-	}
 	,newTalk: function(obj) {
 		return this.dataStore.setTalk(new albero.entity.Talk(obj));
 	}
@@ -2601,7 +2816,7 @@ albero.proxy.AlberoServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 	,newDummyMessage: function(talkId,type,content) {
 		var msg = new albero.entity.Message();
 		msg.id = this.mockMsgId;
-		msg.userId = this.dataStore.currentUser.id;
+		msg.userId = this.dataStore.me.id;
 		msg.talkId = talkId;
 		msg.type = type;
 		msg.content = content;
@@ -2645,14 +2860,11 @@ albero.proxy.AppStateProxy.__super__ = puremvc.patterns.proxy.Proxy;
 albero.proxy.AppStateProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.prototype,{
 	start: function() {
 		this.updateLastActivityAt();
-		this.setupListeners();
 		this.checkInactiveInterval();
-	}
-	,setupListeners: function() {
 	}
 	,setAppState: function(_appState) {
 		var p1 = "APP_STATE_CHANGED: " + Std.string(_appState);
-		if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr() + Std.string(p1),"","","","");
+		if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr(),p1,"","","","");
 		this.appState = _appState;
 		this.sendNotification("app_state_changed",this.appState);
 	}
@@ -2682,57 +2894,116 @@ $hxClasses["albero.proxy.DataStoreProxy"] = albero.proxy.DataStoreProxy;
 albero.proxy.DataStoreProxy.__name__ = ["albero","proxy","DataStoreProxy"];
 albero.proxy.DataStoreProxy.__super__ = puremvc.patterns.proxy.Proxy;
 albero.proxy.DataStoreProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.prototype,{
-	setCurrentUser: function(user) {
-		this.currentUser = user;
+	setMe: function(user) {
+		this.me = user;
+		var _g = 0;
+		var _g1 = this.getDomains();
+		while(_g < _g1.length) {
+			var domain = _g1[_g];
+			++_g;
+			this.sendNotification("notify_update_user",this.me.toDomainUser(domain.id));
+		}
 		this.sendNotification("current_user_changed",user);
 	}
-	,isCurrentUser: function(userId) {
-		return this.currentUser != null && albero.Int64Helper.eq(this.currentUser.id,userId);
+	,isMe: function(userId) {
+		return this.me != null && albero.Int64Helper.eq(this.me.id,userId);
 	}
-	,getFriendsMap: function(domainId) {
-		var key = "_" + domainId.high + "_" + domainId.low;
-		var friendsInDomain = this.friends.get(key);
-		if(friendsInDomain == null) {
-			friendsInDomain = new haxe.ds.StringMap();
-			this.friends.set(key,friendsInDomain);
+	,addFriend: function(user) {
+		var map = this.ensureDomainUserMap(user.domainId);
+		var key = albero.Int64Helper.idStr(user.id);
+		map.set(key,{ type : 0, user : user});
+		return user;
+	}
+	,addAcquaintance: function(user) {
+		var map = this.ensureDomainUserMap(user.domainId);
+		var key = albero.Int64Helper.idStr(user.id);
+		map.set(key,{ type : 1, user : user});
+		return user;
+	}
+	,ensureDomainUserMap: function(domainId) {
+		var domainIdStr = "_" + domainId.high + "_" + domainId.low;
+		var map = this.users.get(domainIdStr);
+		if(map == null) {
+			map = new haxe.ds.StringMap();
+			this.users.set(domainIdStr,map);
 		}
-		return friendsInDomain;
+		return map;
 	}
-	,isFriendOrAcquaintance: function(domainId,userId) {
-		var this1 = this.getFriendsMap(domainId);
-		return this1.exists("_" + userId.high + "_" + userId.low);
+	,setUserIfLatest: function(map,user) {
+		if(map == null) {
+			var key = albero.Int64Helper.idStr(user.domainId);
+			map = this.users.get(key);
+			if(map == null) return;
+		}
+		var value;
+		var key1 = albero.Int64Helper.idStr(user.id);
+		value = map.get(key1);
+		if(value != null) {
+			if(value.type == 2 || haxe.Int64.compare(user.updatedAt,value.user.updatedAt) > 1) {
+				value.user = user;
+				this.sendNotification("notify_update_user",user);
+			}
+		} else {
+			var key2 = albero.Int64Helper.idStr(user.id);
+			map.set(key2,{ type : 2, user : user});
+		}
 	}
-	,addFriend: function(domainId,user) {
-		var this1 = this.getFriendsMap(domainId);
-		var key = albero.Int64Helper.idStr(user.id);
-		this1.set(key,true);
-		return user;
-	}
-	,addAcquaintance: function(domainId,user) {
-		var this1 = this.getFriendsMap(domainId);
-		var key = albero.Int64Helper.idStr(user.id);
-		this1.set(key,false);
-		return user;
+	,setUsersIfLatest: function(domainId,users) {
+		var map = this.users.get("_" + domainId.high + "_" + domainId.low);
+		if(map == null) return;
+		var _g = 0;
+		while(_g < users.length) {
+			var user = users[_g];
+			++_g;
+			this.setUserIfLatest(map,user);
+		}
 	}
 	,removeFriend: function(domainId,userId) {
-		var this1 = this.getFriendsMap(domainId);
-		this1.remove("_" + userId.high + "_" + userId.low);
+		var map = this.users.get("_" + domainId.high + "_" + domainId.low);
+		if(map != null) {
+			var value = map.get("_" + userId.high + "_" + userId.low);
+			value.type = 2;
+		}
 	}
 	,removeAcquaintance: function(domainId,userId) {
 		this.removeFriend(domainId,userId);
 	}
-	,getUser: function(id) {
+	,getUser: function(domainId,id) {
 		if((id.high | id.low) == 0) return null;
-		var uid = "_" + id.high + "_" + id.low;
-		return this.users.get(uid);
+		if(albero.Int64Helper.eq(this.me.id,id)) return this.me.toDomainUser(domainId);
+		var map = this.users.get("_" + domainId.high + "_" + domainId.low);
+		if(map != null) {
+			var value = map.get("_" + id.high + "_" + id.low);
+			if(value != null) return value.user;
+		}
+		return null;
 	}
-	,setUser: function(user) {
-		var key = albero.Int64Helper.idStr(user.id);
-		this.users.set(key,user);
-		return user;
-	}
-	,getUsermap: function() {
-		return this.users;
+	,getUsers: function(domainId,userIds) {
+		var _g = this;
+		var _getUsers = function(domainId1,userIds1) {
+			var map = _g.users.get("_" + domainId1.high + "_" + domainId1.low);
+			if(map != null) {
+				if(userIds1 != null) return userIds1.map(function(id) {
+					if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr(),"idStr=" + ("_" + id.high + "_" + id.low),"","","","");
+					if((id.high | id.low) == 0) return null;
+					if(albero.Int64Helper.eq(_g.me.id,id)) return _g.me.toDomainUser(domainId1);
+					var value = map.get("_" + id.high + "_" + id.low);
+					if(value != null) return value.user; else return null;
+				}); else {
+					var users = new Array();
+					var it = map.iterator();
+					while(it.hasNext()) users.push(it.next().user);
+					return users;
+				}
+			}
+			return new Array();
+		};
+		if(domainId != null) return _getUsers(domainId,userIds); else {
+			var it1 = this.domains.iterator();
+			var users1 = null;
+			while(it1.hasNext()) if(users1 == null) users1 = _getUsers(it1.next().id,userIds); else users1 = users1.concat(_getUsers(it1.next().id,userIds));
+			return users1;
+		}
 	}
 	,getTalk: function(id) {
 		return this.talks.get("_" + id.high + "_" + id.low);
@@ -2741,13 +3012,23 @@ albero.proxy.DataStoreProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.pro
 		var key = albero.Int64Helper.idStr(talk.id);
 		this.talks.set(key,talk);
 		if(talk.leftUsers != null) {
+			var map = this.ensureDomainUserMap(talk.domainId);
 			var _g = 0;
 			var _g1 = talk.leftUsers;
 			while(_g < _g1.length) {
-				var user = _g1[_g];
+				var leftUser = _g1[_g];
 				++_g;
-				var uid = albero.Int64Helper.idStr(user.id);
-				if(!this.users.exists(uid)) this.users.set(uid,user);
+				var idStr = albero.Int64Helper.idStr(leftUser.id);
+				var value = map.get(idStr);
+				if(value != null) {
+					if(value.type == 2 && haxe.Int64.compare(leftUser.updatedAt,value.user.updatedAt) > 0) {
+						value.user = leftUser;
+						this.sendNotification("notify_update_user",leftUser);
+					}
+				} else {
+					map.set(idStr,{ type : 2, user : leftUser});
+					this.sendNotification("notify_update_user",leftUser);
+				}
 			}
 		}
 		return talk;
@@ -2792,10 +3073,10 @@ albero.proxy.DataStoreProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.pro
 	}
 	,getDomains: function() {
 		var result = new Array();
-		var $it0 = this.domains.keys();
+		var $it0 = this.domains.iterator();
 		while( $it0.hasNext() ) {
-			var id = $it0.next();
-			result.push(this.domains.get(id));
+			var domain = $it0.next();
+			result.push(domain);
 		}
 		return result;
 	}
@@ -2842,7 +3123,6 @@ albero.proxy.DataStoreProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.pro
 		this.sendNotification("brand_badge_changed");
 	}
 	,clear: function() {
-		this.friends = new haxe.ds.StringMap();
 		this.users = new haxe.ds.StringMap();
 		this.talks = new haxe.ds.StringMap();
 		this.talkStatuses = new haxe.ds.StringMap();
@@ -2864,13 +3144,16 @@ albero.proxy.FileServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.p
 	getValidHost: function() {
 		return "https://" + Settings.host;
 	}
-	,downloadUrl: function(url) {
+	,downloadUrl: function(url,download) {
+		if(download == null) download = false;
 		if(url == null || url.length == 0) return "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 		if(StringTools.startsWith(url,this.validHost)) {
 			var accessToken = this.settings.getAccessToken();
-			var sep;
-			if(url.indexOf("?") != -1) sep = "&"; else sep = "?";
-			return url + sep + "Authorization=ALB%20" + accessToken;
+			var url2 = url;
+			if(url.indexOf("?") != -1) url2 += "&"; else url2 += "?";
+			url2 += "Authorization=ALB%20" + accessToken;
+			if(download) url2 += "&download=true";
+			return url2;
 		} else return url;
 	}
 	,download: function(url,path,callback) {
@@ -2930,14 +3213,14 @@ albero.proxy.FileServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.p
 					data += chunk;
 				});
 				res.on("end",function() {
-					_g.uploadFailed(res.statusCode + ": " + data);
+					_g.uploadFailed({ responseText : res.statusCode + ": " + data});
 				});
 				return;
 			}
 			callback();
 		});
 		req.on("error",function(e) {
-			_g.uploadFailed(e.message);
+			_g.uploadFailed({ responseText : e.message});
 		});
 		var f = js.Node.require("fs").createReadStream(file.path);
 		f.on("data",function(chunk1) {
@@ -2950,8 +3233,8 @@ albero.proxy.FileServiceProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.p
 			req.end();
 		});
 	}
-	,uploadFailed: function(errorMessage) {
-		console.log("uploadFailed. " + errorMessage);
+	,uploadFailed: function(xhr) {
+		console.log("uploadFailed. " + xhr.responseText);
 		this.sendNotification("error_occurred",{ message : "ファイルの送信に失敗しました。"});
 	}
 	,createDummyFile: function(filePath) {
@@ -3055,15 +3338,15 @@ albero.proxy.MsgPackRpcProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.pr
 			var result = data1[3];
 			var responseHandler = this.responseHandlers.get(msgId);
 			if(responseHandler == null) {
-				if(console != null) console.error(AlberoLog.dateStr() + "No ResponseHandler prepared. msgId:%s error:%s result:",msgId,error,result,"");
+				if(console != null) console.error(AlberoLog.dateStr(),"No ResponseHandler prepared. msgId:%s error:%s result:",msgId,error,result,"");
 				return;
 			}
-			if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr() + "message received. method:",responseHandler.method," data:",data1,"");
+			if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr(),"response received. method:",responseHandler.method," data:",data1,"");
 			if(error == null) {
 				var func = responseHandler.onSuccess;
 				if(func != null) func(result);
 			} else {
-				if(console != null) console.error(AlberoLog.dateStr() + "Receive Error Response. method:",responseHandler.method," error:",error,"");
+				if(console != null) console.error(AlberoLog.dateStr(),"Receive Error Response. method:",responseHandler.method," error:",error,"");
 				var func1 = responseHandler.onError;
 				if(func1 != null) func1(error); else if(this.errorHandler != null) this.errorHandler(responseHandler.method,error);
 			}
@@ -3075,18 +3358,20 @@ albero.proxy.MsgPackRpcProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.pr
 			method = js.Boot.__cast(data1[2] , String);
 			var params;
 			params = js.Boot.__cast(data1[3] , Array);
+			if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr(),"request received. method:",method,"","","");
 			var _g = 0;
 			while(_g < params.length) {
 				var param = params[_g];
 				++_g;
 				this.broadcast.handleNotification(method,param,function() {
+					if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr(),"response sent. method:",method,"","","");
 					_g1.ws.send(new msgpack.Encoder([1,msgId1,null,true]).getBytes());
 				});
 			}
 		}
 	}
 	,onClose: function(code,reason,wasClean) {
-		if(console != null) console.info(AlberoLog.dateStr() + Std.string("onClose. code:" + code + ", reason:" + reason + ", wasClean:" + (wasClean == null?"null":"" + wasClean)),"","","","");
+		if(console != null) console.info(AlberoLog.dateStr(),"onClose. code:" + code + ", reason:" + reason + ", wasClean:" + (wasClean == null?"null":"" + wasClean),"","","","");
 		if(code != 1001 || !wasClean) {
 			if((code == 1000 || code == 1005) && reason == "concurrent access") this.connectionStatus = albero.ConnectionStatus.ConcurrentAccessError; else if((code == 1000 || code == 1005) && reason == "forcibly closed") this.connectionStatus = albero.ConnectionStatus.ForcibliyClosedError; else this.connectionStatus = albero.ConnectionStatus.Error;
 			if(this.connectionStatus == albero.ConnectionStatus.ForcibliyClosedError) this.sendNotification("SignOut"); else this.sendNotification("Url",albero.command.UrlAction.FORWARD(albero.Urls.error));
@@ -3108,7 +3393,7 @@ albero.proxy.MsgPackRpcProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.pr
 	}
 	,call: function(method,args,onSuccess,onError) {
 		if(this.ws == null) {
-			if(console != null) console.error(AlberoLog.dateStr() + "disconnected. data:",this.data,"","","");
+			if(console != null) console.error(AlberoLog.dateStr(),"disconnected. data:",this.data,"","","");
 			return;
 		}
 		if(args == null) args = [];
@@ -3118,7 +3403,7 @@ albero.proxy.MsgPackRpcProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.pr
 		var data = [0,msgId,method,args];
 		var msgpack1 = new msgpack.Encoder(data).getBytes();
 		this.ws.send(msgpack1);
-		if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr() + "send request. data:",data,"","","");
+		if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr(),"send request. data:",data,"","","");
 	}
 	,ping: function() {
 		var _g = this.connectionStatus;
@@ -3204,9 +3489,9 @@ albero.proxy.RoutingProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.proto
 		this.init();
 		this.router.forward(url);
 	}
-	,redirect: function(url) {
+	,redirect: function(url,historyState) {
 		this.init();
-		this.router.redirect(url);
+		this.router.redirect(url,historyState);
 	}
 	,back: function() {
 		if(this.router == null) return;
@@ -3225,8 +3510,7 @@ $hxClasses["albero.proxy._RoutingProxy.LocalRouter"] = albero.proxy._RoutingProx
 albero.proxy._RoutingProxy.LocalRouter.__name__ = ["albero","proxy","_RoutingProxy","LocalRouter"];
 albero.proxy._RoutingProxy.LocalRouter.prototype = {
 	notify: function(url) {
-		console.log("Routing to '" + albero.UrlsHelper.toFragment(url) + "'");
-		var domainId = albero.UrlsHelper.getDomainId(url);
+		var domainId = this.getDomainId(url);
 		this.settings.setSelectedDomainId(domainId);
 		this.proxy.sendNotification("current_page_changed",url);
 	}
@@ -3241,10 +3525,34 @@ albero.proxy._RoutingProxy.LocalRouter.prototype = {
 			this.notify(url);
 		}
 	}
-	,redirect: function(url) {
+	,redirect: function(url,historyState) {
 	}
 	,back: function() {
 		this.notify(this.prev);
+	}
+	,getDomainId: function(url) {
+		switch(url[1]) {
+		case 2:
+			var domainId = url[2];
+			return domainId;
+		case 3:
+			var domainId1 = url[2];
+			return domainId1;
+		case 4:
+			var domainId2 = url[2];
+			return domainId2;
+		case 5:
+			var domainId3 = url[2];
+			return domainId3;
+		case 6:
+			var domainId4 = url[2];
+			return domainId4;
+		case 7:
+			var domainId5 = url[2];
+			return domainId5;
+		default:
+			return null;
+		}
 	}
 	,__class__: albero.proxy._RoutingProxy.LocalRouter
 };
@@ -3260,15 +3568,13 @@ albero.proxy.SettingsProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.prot
 	setAccessToken: function(accessToken) {
 		if(!this.remember) return;
 		this.accessToken = accessToken;
-		this.set("access_token",this.accessToken = accessToken);
 		this.sendNotification("access_token_changed",accessToken);
 	}
 	,getAccessToken: function() {
-		if(this.accessToken != null) return this.accessToken;
-		return this.accessToken = this.get("access_token");
+		if(this.accessToken == null) this.accessToken = Settings.accessToken;
+		return this.accessToken;
 	}
 	,clearAccessToken: function() {
-		this.remove("access_token");
 		this.accessToken = null;
 	}
 	,setConfiguration: function(conf) {
@@ -3287,7 +3593,7 @@ albero.proxy.SettingsProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.prot
 		this.selectedDomainId = null;
 	}
 	,setSelectedTalk: function(talk) {
-		if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr() + "talk selected. talk:",talk,"","","");
+		if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr(),"talk selected. talk:",talk,"","","");
 		if(this.selectedTalkIds == null) this.selectedTalkIds = new haxe.ds.StringMap();
 		if(talk == null) {
 			if(this.selectedDomainId != null) {
@@ -3301,27 +3607,6 @@ albero.proxy.SettingsProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.prot
 			if(albero.Int64Helper.eq(talk.domainId,this.selectedDomainId)) this.sendNotification("talk_selection_changed",talk); else return false;
 		}
 		return true;
-	}
-	,set: function(key,val) {
-		if(key == "access_token") {
-			if(console != null) console.info(AlberoLog.dateStr() + (val == null?"null":"" + val),"","","","");
-			js.Node.process.exit(0);
-			return;
-		}
-		if(!js.Node.require("fs").existsSync("settings")) js.Node.require("fs").mkdirSync("settings");
-		sys.io.File.saveContent("settings/" + key,val);
-	}
-	,get: function(key) {
-		if(key == "access_token") return Settings.accessToken;
-		if(!js.Node.require("fs").existsSync("settings/" + key)) return null;
-		return sys.io.File.getContent("settings/" + key);
-	}
-	,remove: function(key) {
-		if(key == "access_token") {
-			Settings.accessToken = null;
-			return;
-		}
-		js.Node.require("fs").unlinkSync("settings/" + key);
 	}
 	,clearSelectedStampTabId: function() {
 	}
@@ -3378,19 +3663,30 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 		this.dataRecovered = false;
 	}
 	,listNotificationInterests: function() {
-		return ["current_user_changed","notify_add_domain_invite","notify_create_pair_talk","notify_create_group_talk","notify_update_group_talk","notify_update_local_talk_status","notify_create_message","create_message_complete","notify_update_read_statuses","notify_get_message_status","data_recovered","error_occurred"];
+		return ["app_state_changed","access_token_changed","current_user_changed","configuration_changed","domain_selection_changed","talk_selection_changed","user_selection_needed","user_selection_changed","friend_selection_needed","stamp_set_changed","stamp_selection_changed","phone_call_started","phone_call_accepted","phone_call_connected","phone_call_hangued_up","action_selection_changed","current_page_changed","fileinfo_selection_changed","error_occurred","brand_badge_changed","send_form_top_changed","data_recovered","notify_update_user","notify_add_friend","notify_add_acquaintance","notify_delete_friend","notify_delete_acquaintance","notify_update_domain_users","get_domain_users_responsed","get_users_responsed","get_profile_responsed","update_user_responsed","update_profile_responsed","notify_add_domain_invite","notify_accept_domain_invite","notify_delete_domain_invite","notify_join_domain","notify_update_domain","notify_leave_domain","notify_create_pair_talk","notify_create_group_talk","notify_update_group_talk","notify_add_talkers","notify_delete_talker","notify_add_talk_invite","notify_accept_talk_invite","notify_delete_talk_invite","notify_delete_talk","notify_create_message","notify_update_read_statuses","notify_update_talk_status","notify_update_local_talk_status","notify_get_messages","notify_get_message_status","create_message_start","create_message_complete","create_message_fail","notify_create_announcement","notify_update_announcement_status","notify_get_announcements","notify_update_question","get_questions_responsed","notify_create_attachment","notify_delete_attachment","get_file_responsed"];
 	}
 	,handleNotification: function(note) {
 		var _g1 = this;
-		var view = this.getViewComponent();
 		var _g = note.getName();
+		var defalut = _g;
 		switch(_g) {
+		case "data_recovered":
+			if(this.dataRecovered) return;
+			this.dataRecovered = true;
+			this.eventEmitter.emit(note.getName());
+			break;
+		case "error_occurred":
+			this.eventEmitter.emit(note.getName(),new Error("AdapterError"),note.getBody());
+			break;
+		default:
+			this.eventEmitter.emit(note.getName(),note.getBody());
+		}
+		var view = this.getViewComponent();
+		var _g2 = note.getName();
+		switch(_g2) {
 		case "current_user_changed":
 			var user = note.getBody();
-			console.log(user.getName() + " is logined.");
-			if(Settings.$name != null && Settings.$name != "" && Settings.$name != "Hubot" && user.displayName != Settings.$name) haxe.Timer.delay(function() {
-				_g1.sendNotification("UpdateUser",{ displayName : Settings.$name, phoneticDisplayName : Settings.$name, profileImage : null});
-			},500);
+			console.log(user.displayName + " is logined.");
 			break;
 		case "notify_add_domain_invite":
 			var invite = note.getBody();
@@ -3399,7 +3695,7 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 			if(!this.dataRecovered) return;
 			var talk = note.getBody();
 			haxe.Timer.delay(function() {
-				_g1.emit(talk,"JoinMessage",_g1.dataStore.currentUser);
+				_g1.emit(talk,"JoinMessage",_g1.dataStore.me);
 			},500);
 			break;
 		case "notify_update_group_talk":
@@ -3408,21 +3704,21 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 			var talkName;
 			if(talk1.name != null) talkName = talk1.name; else talkName = "";
 			haxe.Timer.delay(function() {
-				_g1.emit(talk1,"TopicChangeMessage",_g1.dataStore.currentUser,talkName);
+				_g1.emit(talk1,"TopicChangeMessage",_g1.dataStore.me,talkName);
 			},500);
 			break;
 		case "create_message_complete":
 			var args = note.getBody();
 			var msg = args[0];
 			var dummyId = args[1];
-			if(this.dataStore.isCurrentUser(msg.userId)) {
+			if(this.dataStore.isMe(msg.userId)) {
 				this.messageEvent.messageCreated(msg,note.getType());
 				return;
 			}
 			break;
 		case "notify_create_message":
 			var msg1 = note.getBody();
-			if(this.dataStore.isCurrentUser(msg1.userId)) return;
+			if(this.dataStore.isMe(msg1.userId)) return;
 			var status = this.dataStore.getTalkStatus(msg1.talkId);
 			if(status != null && status.maxReadMessageId != null && haxe.Int64.compare(status.maxReadMessageId,msg1.id) >= 0) return;
 			haxe.Timer.delay(function() {
@@ -3433,9 +3729,9 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 		case "notify_update_read_statuses":
 			var statuses = note.getBody();
 			var _g11 = 0;
-			var _g2 = statuses.messageIds;
-			while(_g11 < _g2.length) {
-				var msgId = _g2[_g11];
+			var _g21 = statuses.messageIds;
+			while(_g11 < _g21.length) {
+				var msgId = _g21[_g11];
 				++_g11;
 				this.messageEvent.messageRead(statuses.talkId,msgId,statuses.readUserIds);
 			}
@@ -3444,20 +3740,12 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 			var status1 = note.getBody();
 			this.messageEvent.messageRead(status1.talkId,status1.id,status1.readUserIds,status1.unreadUserIds);
 			break;
-		case "data_recovered":
-			if(this.dataRecovered) return;
-			this.dataRecovered = true;
-			this.eventEmitter.emit(note.getName());
-			break;
-		case "error_occurred":
-			this.eventEmitter.emit(note.getName(),new Error("AdapterError"),note.getBody());
-			break;
 		}
 	}
 	,emit: function(talk,type,user,msg) {
 		var _g = this;
 		if(type != null && talk != null && user != null) this.api.getAllUserEmails(function() {
-			_g.eventEmitter.emit(type,{ room : albero.Int64Helper.idStr(talk.id), rooms : _g.simpleObject.talkObjects()},_g.simpleObject.userObject(user),msg);
+			_g.eventEmitter.emit(type,{ room : albero.Int64Helper.idStr(talk.id), rooms : _g.hubotObject.talkObjects()},_g.hubotObject.userObject(user),msg);
 		});
 	}
 	,dispatch: function(msg) {
@@ -3465,13 +3753,13 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 		var content = msg.content;
 		var talk = this.dataStore.getTalk(msg.talkId);
 		var emit = function(type,userId,body) {
-			_g.emit(talk,type,_g.dataStore.getUser(userId),{ id : albero.Int64Helper.idStr(msg.id), content : body});
+			_g.emit(talk,type,_g.dataStore.getUser(talk.domainId,userId),{ id : albero.Int64Helper.idStr(msg.id), content : body});
 		};
 		if(msg.type == albero.entity.MessageType.system) {
 			var subtype = content.type;
 			if(subtype == "add_talkers") {
 				var userIds = content.added_user_ids;
-				var currentUserId = this.dataStore.currentUser.id;
+				var currentUserId = this.dataStore.me.id;
 				if(albero.Int64Helper.contains(userIds,currentUserId)) {
 					emit("JoinMessage",currentUserId);
 					return;
@@ -3485,12 +3773,12 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 			} else if(subtype == "delete_talker") {
 				emit("LeaveMessage",content.deleted_user_id);
 				if(content.user_ids.length <= 1) haxe.Timer.delay(function() {
-					_g.sendNotification("Talk",albero.command.TalkAction.DELETE(talk));
+					_g.sendNotification("Talk",albero.command.TalkAction.DELETE(null,talk));
 				},500);
 			} else if(subtype == "hide_pair_talk") {
 				emit("LeaveMessage",content.user_id);
 				haxe.Timer.delay(function() {
-					_g.sendNotification("Talk",albero.command.TalkAction.DELETE(talk));
+					_g.sendNotification("Talk",albero.command.TalkAction.DELETE(null,talk));
 				},500);
 			}
 		} else {
@@ -3501,8 +3789,7 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 				text = content;
 				break;
 			default:
-				var obj;
-				obj = JSON.parse(JSON.stringify(msg.content));
+				var obj = ObjectHelper.deepCopy(msg.content);
 				var _g11 = 0;
 				var _g21 = Reflect.fields(obj);
 				while(_g11 < _g21.length) {
@@ -3519,7 +3806,8 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 			if(text != null) {
 				text = StringTools.replace(text,"　"," ");
 				if(talk.type == albero.entity.TalkType.PairTalk) {
-					if(!StringTools.startsWith(text,Settings.$name)) text = Settings.$name + " " + text;
+					var name = "Hubot";
+					if(!StringTools.startsWith(text,name)) text = name + " " + text;
 				}
 				emit("TextMessage",msg.userId,text);
 			}
@@ -3528,6 +3816,67 @@ albero_cli.mediator.CommandLineMediator.prototype = $extend(puremvc.patterns.med
 	,__class__: albero_cli.mediator.CommandLineMediator
 });
 albero_cli.proxy = {};
+albero_cli.proxy.HubotObjectProxy = function() {
+	puremvc.patterns.proxy.Proxy.call(this,"hubotObject");
+};
+$hxClasses["albero_cli.proxy.HubotObjectProxy"] = albero_cli.proxy.HubotObjectProxy;
+albero_cli.proxy.HubotObjectProxy.__name__ = ["albero_cli","proxy","HubotObjectProxy"];
+albero_cli.proxy.HubotObjectProxy.__super__ = puremvc.patterns.proxy.Proxy;
+albero_cli.proxy.HubotObjectProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.prototype,{
+	userObject: function(user) {
+		var u = ObjectHelper.deepCopy(user);
+		u.id_i64 = user.id;
+		u.id = albero.Int64Helper.idStr(user.id);
+		u.name = user.displayName;
+		u.profile_url = user.profileImageUrl;
+		return u;
+	}
+	,userObjectByIdStr: function(domainId,userId) {
+		var users = this.userObjectsByIds(domainId,[albero.Int64Helper.idStrToInt64(userId)]);
+		if(users.length > 0) return users[0]; else return null;
+	}
+	,userObjectsByIds: function(domainId,userIds) {
+		var users = [];
+		var _g = 0;
+		var _g1 = this.dataStore.getUsers(domainId,userIds);
+		while(_g < _g1.length) {
+			var user = _g1[_g];
+			++_g;
+			if(user == null) continue;
+			users.push(this.userObject(user));
+		}
+		return users;
+	}
+	,userObjects: function(domainId) {
+		var users = { };
+		var _g = 0;
+		var _g1 = this.dataStore.getUsers(domainId);
+		while(_g < _g1.length) {
+			var user = _g1[_g];
+			++_g;
+			users[albero.Int64Helper.idStr(user.id)] = this.userObject(user);
+		}
+		return users;
+	}
+	,talkObjects: function() {
+		var talks = { };
+		var _g = 0;
+		var _g1 = this.dataStore.getTalks();
+		while(_g < _g1.length) {
+			var talk = _g1[_g];
+			++_g;
+			var t = ObjectHelper.deepCopy(talk);
+			t.id_i64 = talk.id;
+			t.id = albero.Int64Helper.idStr(talk.id);
+			t.topic = talk.name;
+			if(talk.type == albero.entity.TalkType.Unknown) t.type = 0; else if(talk.type == albero.entity.TalkType.PairTalk) t.type = 1; else t.type = 2;
+			t.users = this.userObjectsByIds(talk.domainId,talk.userIds);
+			talks[albero.Int64Helper.idStr(talk.id)] = t;
+		}
+		return talks;
+	}
+	,__class__: albero_cli.proxy.HubotObjectProxy
+});
 albero_cli.proxy.MessageEventProxy = function() {
 	puremvc.patterns.proxy.Proxy.call(this,"messageEvent");
 	this.emitters = new haxe.ds.StringMap();
@@ -3553,7 +3902,7 @@ albero_cli.proxy.MessageEventProxy.prototype = $extend(puremvc.patterns.proxy.Pr
 			}
 		}
 		if(emitter != null) {
-			if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr() + "regist emitter",key,emitter,"","");
+			if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr(),"regist emitter",key,emitter,"","");
 			this.emitters.set(key,emitter);
 		}
 	}
@@ -3567,7 +3916,7 @@ albero_cli.proxy.MessageEventProxy.prototype = $extend(puremvc.patterns.proxy.Pr
 			if(Reflect.isFunction(Reflect.field(emitter,fieldName))) listenerCount++;
 		}
 		if(listenerCount == 0) {
-			if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr() + "unregist emitter",key,emitter,"","");
+			if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr(),"unregist emitter",key,emitter,"","");
 			this.emitters.remove(key);
 		}
 	}
@@ -3577,7 +3926,7 @@ albero_cli.proxy.MessageEventProxy.prototype = $extend(puremvc.patterns.proxy.Pr
 	,emit: function(emitter,event,params) {
 		var func = Reflect.field(emitter,event);
 		if(func != null) {
-			if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr() + Std.string("emit '" + event + "'"),params,"","","");
+			if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr(),"emit '" + event + "'",params,"","","");
 			func.apply(emitter,params);
 		}
 	}
@@ -3589,12 +3938,12 @@ albero_cli.proxy.MessageEventProxy.prototype = $extend(puremvc.patterns.proxy.Pr
 		var value = emitter;
 		this.emitters.set(key1,value);
 		var talk = this.dataStore.getTalk(msg.talkId);
-		var myId = this.dataStore.currentUser.id;
+		var myId = this.dataStore.me.id;
 		emitter.__readerIds = [myId];
 		emitter.__unreadIds = talk.userIds.slice();
 		albero.Int64Helper.remove(emitter.__unreadIds,myId);
-		emitter.readUsers = this.simpleObject.userObjectsByIds(emitter.__readerIds);
-		emitter.unreadUsers = this.simpleObject.userObjectsByIds(emitter.__unreadIds);
+		emitter.readUsers = this.hubotObject.userObjectsByIds(talk.domainId,emitter.__readerIds);
+		emitter.unreadUsers = this.hubotObject.userObjectsByIds(talk.domainId,emitter.__unreadIds);
 		this.emit(emitter,"send",[emitter,msg]);
 		this.off(emitter,"send");
 	}
@@ -3602,7 +3951,7 @@ albero_cli.proxy.MessageEventProxy.prototype = $extend(puremvc.patterns.proxy.Pr
 		var _g = this;
 		var emitter = this.emitters.get("_" + msgId.high + "_" + msgId.low);
 		if(emitter == null) return;
-		if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr() + "CALL messageREAD",newReaders,allUnreaders,"","");
+		if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr(),"CALL messageREAD",newReaders,allUnreaders,"","");
 		var readers = emitter.__readerIds;
 		var unreads = emitter.__unreadIds;
 		var diff = [];
@@ -3616,13 +3965,16 @@ albero_cli.proxy.MessageEventProxy.prototype = $extend(puremvc.patterns.proxy.Pr
 				diff.push(reader);
 			}
 			albero.Int64Helper.remove(unreads,reader);
-			if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr() + "UNREAD REMOVE",unreads,reader,"","");
+			if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr(),"UNREAD REMOVE",unreads,reader,"","");
 		}
-		if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr() + "DIFF",diff,readers,unreads,"");
+		if(AlberoLog.DEBUG && console != null) console.log(AlberoLog.dateStr(),"DIFF",diff,readers,unreads,"");
 		if(diff.length > 0) {
-			emitter.readUsers = this.simpleObject.userObjectsByIds(readers);
-			emitter.unreadUsers = this.simpleObject.userObjectsByIds(unreads);
-			this.emit(emitter,"read",[this.simpleObject.userObjectsByIds(diff),emitter.readUsers,emitter.unreadUsers]);
+			var talk = this.dataStore.getTalk(talkId);
+			var domainId;
+			if(talk != null) domainId = talk.domainId; else domainId = null;
+			emitter.readUsers = this.hubotObject.userObjectsByIds(domainId,readers);
+			emitter.unreadUsers = this.hubotObject.userObjectsByIds(domainId,unreads);
+			this.emit(emitter,"read",[this.hubotObject.userObjectsByIds(domainId,diff),emitter.readUsers,emitter.unreadUsers]);
 		}
 		if(readers.length < 16) {
 		} else if(emitter.__readerTimer == null) {
@@ -3748,61 +4100,6 @@ albero_cli.proxy.SendQueueProxy.prototype = $extend(puremvc.patterns.proxy.Proxy
 		} else return albero.entity.MessageType.unknown;
 	}
 	,__class__: albero_cli.proxy.SendQueueProxy
-});
-albero_cli.proxy.SimpleObjectProxy = function() {
-	puremvc.patterns.proxy.Proxy.call(this,"simpleObject");
-};
-$hxClasses["albero_cli.proxy.SimpleObjectProxy"] = albero_cli.proxy.SimpleObjectProxy;
-albero_cli.proxy.SimpleObjectProxy.__name__ = ["albero_cli","proxy","SimpleObjectProxy"];
-albero_cli.proxy.SimpleObjectProxy.__super__ = puremvc.patterns.proxy.Proxy;
-albero_cli.proxy.SimpleObjectProxy.prototype = $extend(puremvc.patterns.proxy.Proxy.prototype,{
-	userObject: function(user) {
-		return { id : albero.Int64Helper.idStr(user.id), name : user.displayName, email : user.email, profile_url : user.profileImageUrl};
-	}
-	,userObjectByIdStr: function(userId) {
-		var user = this.dataStore.getUser(albero.Int64Helper.idStrToInt64(userId));
-		if(user != null) return this.userObject(user);
-		return null;
-	}
-	,userObjectsByIds: function(userIds) {
-		var users = [];
-		var _g = 0;
-		while(_g < userIds.length) {
-			var userId = userIds[_g];
-			++_g;
-			var user = this.dataStore.getUser(userId);
-			if(user != null) users.push(this.userObject(user));
-		}
-		return users;
-	}
-	,userObjects: function() {
-		var users = { };
-		var $it0 = (function($this) {
-			var $r;
-			var this1 = $this.dataStore.getUsermap();
-			$r = this1.iterator();
-			return $r;
-		}(this));
-		while( $it0.hasNext() ) {
-			var user = $it0.next();
-			users[albero.Int64Helper.idStr(user.id)] = this.userObject(user);
-		}
-		return users;
-	}
-	,talkObjects: function() {
-		var talks = { };
-		var _g = 0;
-		var _g1 = this.dataStore.getTalks();
-		while(_g < _g1.length) {
-			var talk = _g1[_g];
-			++_g;
-			var type;
-			if(talk.type == albero.entity.TalkType.Unknown) type = 0; else if(talk.type == albero.entity.TalkType.PairTalk) type = 1; else type = 2;
-			talks[albero.Int64Helper.idStr(talk.id)] = { id : albero.Int64Helper.idStr(talk.id), topic : talk.name, type : type, users : this.userObjectsByIds(talk.userIds)};
-		}
-		return talks;
-	}
-	,__class__: albero_cli.proxy.SimpleObjectProxy
 });
 var haxe = {};
 haxe.Int64 = function(high,low) {
@@ -3932,6 +4229,12 @@ haxe.Int64.prototype = {
 	}
 	,__class__: haxe.Int64
 };
+haxe.Json = function() { };
+$hxClasses["haxe.Json"] = haxe.Json;
+haxe.Json.__name__ = ["haxe","Json"];
+haxe.Json.parse = function(jsonString) {
+	return JSON.parse(jsonString);
+};
 haxe.Timer = function(time_ms) {
 	var me = this;
 	this.id = setInterval(function() {
@@ -3972,9 +4275,6 @@ haxe.ds.IntMap.prototype = {
 	,get: function(key) {
 		return this.h[key];
 	}
-	,exists: function(key) {
-		return this.h.hasOwnProperty(key);
-	}
 	,remove: function(key) {
 		if(!this.h.hasOwnProperty(key)) return false;
 		delete(this.h[key]);
@@ -3986,14 +4286,6 @@ haxe.ds.IntMap.prototype = {
 		if(this.h.hasOwnProperty(key)) a.push(key | 0);
 		}
 		return HxOverrides.iter(a);
-	}
-	,iterator: function() {
-		return { ref : this.h, it : this.keys(), hasNext : function() {
-			return this.it.hasNext();
-		}, next : function() {
-			var i = this.it.next();
-			return this.ref[i];
-		}};
 	}
 	,__class__: haxe.ds.IntMap
 };
@@ -4009,31 +4301,6 @@ haxe.ds.ObjectMap.prototype = {
 		var id = key.__id__ || (key.__id__ = ++haxe.ds.ObjectMap.count);
 		this.h[id] = value;
 		this.h.__keys__[id] = key;
-	}
-	,exists: function(key) {
-		return this.h.__keys__[key.__id__] != null;
-	}
-	,remove: function(key) {
-		var id = key.__id__;
-		if(this.h.__keys__[id] == null) return false;
-		delete(this.h[id]);
-		delete(this.h.__keys__[id]);
-		return true;
-	}
-	,keys: function() {
-		var a = [];
-		for( var key in this.h.__keys__ ) {
-		if(this.h.hasOwnProperty(key)) a.push(this.h.__keys__[key]);
-		}
-		return HxOverrides.iter(a);
-	}
-	,iterator: function() {
-		return { ref : this.h, it : this.keys(), hasNext : function() {
-			return this.it.hasNext();
-		}, next : function() {
-			var i = this.it.next();
-			return this.ref[i.__id__];
-		}};
 	}
 	,__class__: haxe.ds.ObjectMap
 };
@@ -5019,21 +5286,11 @@ puremvc.patterns.observer.Observer.prototype = {
 	}
 	,__class__: puremvc.patterns.observer.Observer
 };
-var sys = {};
-sys.io = {};
-sys.io.File = function() { };
-$hxClasses["sys.io.File"] = sys.io.File;
-sys.io.File.__name__ = ["sys","io","File"];
-sys.io.File.getContent = function(path) {
-	return js.Node.require("fs").readFileSync(path,sys.io.File.UTF8_ENCODING);
-};
-sys.io.File.saveContent = function(path,content) {
-	js.Node.require("fs").writeFileSync(path,content);
-};
 function $iterator(o) { if( o instanceof Array ) return function() { return HxOverrides.iter(o); }; return typeof(o.iterator) == 'function' ? $bind(o,o.iterator) : o.iterator; }
 var $_, $fid = 0;
 function $bind(o,m) { if( m == null ) return null; if( m.__id__ == null ) m.__id__ = $fid++; var f; if( o.hx__closures__ == null ) o.hx__closures__ = {}; else f = o.hx__closures__[m.__id__]; if( f == null ) { f = function(){ return f.method.apply(f.scope, arguments); }; f.scope = o; f.method = m; o.hx__closures__[m.__id__] = f; } return f; }
 var Settings = { };
+var EventEmitter = require('events').EventEmitter;
 if(Array.prototype.indexOf) HxOverrides.indexOf = function(a,o,i) {
 	return Array.prototype.indexOf.call(a,o,i);
 };
@@ -5071,6 +5328,56 @@ if(Array.prototype.map == null) Array.prototype.map = function(f) {
 	}
 	return a;
 };
+var FileAPI = (function(module) {
+	module.exports = null;
+	///// FileAPI のミニ版。
+
+function upload(opt) {
+    var method = 'POST';
+    var url = opt.url;
+    var headers = opt.headers;
+    var data = opt.data;
+    var files = opt.files;
+    var complete = opt.complete;
+
+    var formData = new FormData();
+    for (var name in data) {
+        if (data.hasOwnProperty(name)) {
+            formData.append(name, data[name]);
+        }
+    }
+    for (var name in files) {
+        if (files.hasOwnProperty(name)) {
+            formData.append(name, files[name]);
+        }
+    }
+
+    var xhr = new XMLHttpRequest();
+    xhr.open(method, url, true);
+    for (var name in headers) {
+        if (headers.hasOwnProperty(name)) {
+            xhr.setRequestHeader(name, headers[name]);
+        }
+    }
+    xhr.onload = function(e) {
+        if (xhr.readyState === 4) {
+            complete(xhr.status === 200, xhr);
+        }
+    };
+    xhr.onerror = function (e) {
+        complete(false, xhr);
+    };
+    xhr.send(formData);
+
+    return xhr;
+}
+
+module.exports = {
+    upload: upload
+};
+;
+	return module.exports;
+})({ });
 js.Node.setTimeout = setTimeout;
 js.Node.clearTimeout = clearTimeout;
 js.Node.setInterval = setInterval;
@@ -5098,11 +5405,12 @@ albero.command.SendCommand.__meta__ = { fields : { api : { inject : null}}};
 albero.command.SignInCommand.__meta__ = { fields : { api : { inject : null}, settings : { inject : null}, accountLoader : { inject : null}}};
 albero.command.SignOutCommand.__meta__ = { fields : { api : { inject : null}, settings : { inject : null}}};
 albero.command.TalkCommand.__meta__ = { fields : { api : { inject : null}, dataStore : { inject : null}}};
+albero.command.UpdateProfileCommand.__meta__ = { fields : { api : { inject : null}, dataStore : { inject : null}}};
 albero.command.UpdateUserCommand.__meta__ = { fields : { api : { inject : null}}};
 albero.command.UrlCommand.__meta__ = { fields : { routing : { inject : null}}};
 AlberoLog.DEBUG = true;
 puremvc.patterns.proxy.Proxy.NAME = "Proxy";
-albero.proxy.AlberoBroadcastProxy.__meta__ = { fields : { dataStore : { inject : null}, settings : { inject : null}}};
+albero.proxy.AlberoBroadcastProxy.__meta__ = { fields : { dataStore : { inject : null}}};
 albero.proxy.AlberoBroadcastProxy.NAME = "broadcast";
 albero.proxy.AlberoServiceProxy.__meta__ = { fields : { rpc : { inject : null}, settings : { inject : null}, dataStore : { inject : null}, fileService : { inject : null}}};
 albero.proxy.AlberoServiceProxy.NAME = "api";
@@ -5118,18 +5426,17 @@ albero.proxy.RoutingProxy.__meta__ = { fields : { settings : { inject : null}, d
 albero.proxy.RoutingProxy.NAME = "routing";
 albero.proxy.SettingsProxy.NAME = "settings";
 puremvc.patterns.mediator.Mediator.NAME = "Mediator";
-albero_cli.mediator.CommandLineMediator.__meta__ = { fields : { dataStore : { inject : null}, api : { inject : null}, simpleObject : { inject : null}, messageEvent : { inject : null}}};
+albero_cli.mediator.CommandLineMediator.__meta__ = { fields : { dataStore : { inject : null}, api : { inject : null}, hubotObject : { inject : null}, messageEvent : { inject : null}}};
 albero_cli.mediator.CommandLineMediator.NAME = "commandline";
-albero_cli.proxy.MessageEventProxy.__meta__ = { fields : { dataStore : { inject : null}, simpleObject : { inject : null}}};
+albero_cli.proxy.HubotObjectProxy.__meta__ = { fields : { dataStore : { inject : null}}};
+albero_cli.proxy.HubotObjectProxy.NAME = "hubotObject";
+albero_cli.proxy.MessageEventProxy.__meta__ = { fields : { dataStore : { inject : null}, hubotObject : { inject : null}}};
 albero_cli.proxy.MessageEventProxy.NAME = "messageEvent";
 albero_cli.proxy.SendQueueProxy.__meta__ = { fields : { messageEvent : { inject : null}}};
 albero_cli.proxy.SendQueueProxy.NAME = "sendQueue";
-albero_cli.proxy.SimpleObjectProxy.__meta__ = { fields : { dataStore : { inject : null}}};
-albero_cli.proxy.SimpleObjectProxy.NAME = "simpleObject";
 haxe.ds.ObjectMap.count = 0;
 haxe.io.Output.LN2 = Math.log(2);
-sys.io.File.UTF8_ENCODING = { encoding : "utf8"};
 DirectAPI.main();
 })(typeof window != "undefined" ? window : exports);
 
-//# sourceMappingURL=direct-api.debug.js.map
+//# sourceMappingURL=direct-node.debug.js.map
