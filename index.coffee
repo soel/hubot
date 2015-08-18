@@ -4,7 +4,7 @@ Robot                                                                = require '
 Adapter                                                              = require './src/adapter'
 Response                                                             = require './src/response'
 {Listener,TextListener}                                              = require './src/listener'
-{Message,TextMessage,EnterMessage,LeaveMessage,TopicMessage,CatchAllMessage} = require './src/message'
+{Message,TextMessage,EnterMessage,LeaveMessage,JoinMessage,TopicMessage,CatchAllMessage} = require './src/message'
 
 module.exports = {
   User
@@ -18,6 +18,7 @@ module.exports = {
   TextMessage
   EnterMessage
   LeaveMessage
+  JoinMessage
   TopicMessage
   CatchAllMessage
 }
