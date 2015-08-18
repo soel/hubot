@@ -17,7 +17,6 @@ direct = require './robot-direct'
 HUBOT_DEFAULT_ADAPTERS = [
   'campfire'
   'shell'
-  'direct'
 ]
 
 HUBOT_DOCUMENTATION_SECTIONS = [
