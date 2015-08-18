@@ -48,6 +48,9 @@ class Direct extends Adapter
   talks: ->
     @bot.talkObjects()
 
+  domains: ->
+    @bot.domainObjects()
+
   run: ->
    self = @
 

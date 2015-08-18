@@ -507,6 +507,16 @@ class Robot
   reply: (user, strings...) ->
     @adapter.reply user, strings...
 
+  # Public: A helper posts a message back to the public source
+  #
+  # domain  - A domain instance.
+  # strings - One or more strings to be posted. The order of these strings
+  #           should be kept intact.
+  #
+  # Returns nothing.
+  announce: (domain, strings...) ->
+    @adapter.announce domain, strings...
+
   # Public: A helper send function to message a room that the robot is in.
   #
   # room    - String designating the room to message.
