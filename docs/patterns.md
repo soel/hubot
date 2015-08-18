@@ -85,7 +85,8 @@ One of the awesome features of Hubot is its ability to make changes to a product
 There are a variety of different patterns for restricting access that you can follow depending on your specific needs:
 
 * Two buckets of access: full and restricted with whitelist/blacklist
-* specific access rules for every command (Role-based Access Control)
+* Specific access rules for every command (Role-based Access Control)
+* Blacklisting/whitelisting commands in specific rooms
 
 ### Simple (full vs restricted access)
 
@@ -120,14 +121,14 @@ module.exports = (robot) ->
     if context.listener.options.id in POWER_COMMANDS
       if context.response.message.user.id in POWER_USERS
         # User is allowed access to this command
-        next(done)
+        next()
       else
         # Restricted command, but user isn't in whitelist
         context.response.reply "I'm sorry, @#{context.response.message.user.name}, but you don't have access to do that."
         done()
     else
       # This is not a restricted command; allow everyone
-      next(done)
+      next()
 ```
 
 Remember that middleware executes for ALL listeners that match a given message (including `robot.hear /.+/`), so make sure you include them when categorizing your listeners.
@@ -142,3 +143,9 @@ Example access policy:
 * The front desk cannot cut releases nor deploy services
 
 Complex policies like this are currently best implemented in code directly, though there is [ongoing work](https://github.com/michaelansel/hubot-rbac) to build a generalized framework for access management.
+
+### Specific access rules per room
+
+Organizations that have a number of chat rooms that serve different purposes often want to be able to use the same instance of hubot but have a different set of commands allowed in each room.
+
+Work on generalized blacklist solution is [ongoing](https://github.com/kristenmills/hubot-command-blacklist). A whitelist soultion could take a similar approach.
