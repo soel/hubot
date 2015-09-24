@@ -71,9 +71,9 @@ class Robot
 
     @on 'error', (err, res) =>
       @invokeErrorHandlers(err, res)
+      process.exit(1)
     @onUncaughtException = (err) =>
       @emit 'error', err
-      process.exit(1)
     process.on 'uncaughtException', @onUncaughtException
 
   # Public: Adds a custom Listener with the provided matcher, options, and
